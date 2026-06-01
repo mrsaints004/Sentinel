@@ -260,7 +260,7 @@ export default function CreateTreasury({
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-s-text-muted">Agent Identity</span>
-              <span className="font-medium text-s-purple">ERC-8004 NFT</span>
+              <span className="font-medium text-s-purple">Agent Identity NFT</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-s-text-muted">Auto-approve trades</span>

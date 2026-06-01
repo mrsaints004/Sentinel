@@ -35,9 +35,13 @@ export class MarketIntelligenceAgent {
       }
     }
 
-    // Simulate additional market signals
-    const sentimentScore = 40 + Math.random() * 40; // 40-80
-    const onChainActivity = 50 + Math.random() * 30; // 50-80
+    // Derive sentiment from price momentum across all assets (not random)
+    const avgChange24h = prices.reduce((s, p) => s + p.change24h, 0) / (prices.length || 1);
+    const sentimentScore = Math.max(10, Math.min(90, 50 + avgChange24h * 10));
+
+    // Derive on-chain activity proxy from price volatility spread
+    const priceSpread = Math.max(...prices.map(p => Math.abs(p.change24h))) - Math.min(...prices.map(p => Math.abs(p.change24h)));
+    const onChainActivity = Math.max(20, Math.min(90, 50 + priceSpread * 8));
 
     if (ethMomentum > 65) signals.push("ETH momentum trending upward");
     if (ethMomentum < 35) signals.push("ETH momentum trending downward");

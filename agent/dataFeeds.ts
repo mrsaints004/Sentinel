@@ -29,7 +29,11 @@ export interface MarketSnapshot {
   timestamp: number;
 }
 
-// --- Real API data fetchers with fallbacks ---
+// --- Real API data fetchers with cached fallbacks ---
+
+// Cache last-known-good data to avoid random values when APIs fail
+let cachedYields: YieldData[] | null = null;
+let cachedPrices: PriceData[] | null = null;
 
 async function fetchJSON(url: string, timeout = 10000): Promise<any> {
   const controller = new AbortController();
@@ -43,20 +47,20 @@ async function fetchJSON(url: string, timeout = 10000): Promise<any> {
   }
 }
 
-// Fallback simulated data (used if APIs fail)
-function fallbackYields(): YieldData[] {
+// Default yields (used only on first run if API fails — no randomness)
+function defaultYields(): YieldData[] {
   return [
-    { asset: config.assets.USDY, symbol: "USDY", apy: 4.5 + (Math.random() * 2 - 1), tvl: 150_000_000, source: "Ondo Finance" },
-    { asset: config.assets.mETH, symbol: "mETH", apy: 3.8 + (Math.random() * 1.5 - 0.75), tvl: 800_000_000, source: "Mantle LSP" },
-    { asset: config.assets.USDC, symbol: "USDC", apy: 2.0 + (Math.random() * 3 - 0.5), tvl: 500_000_000, source: "Lendle / Init Capital" },
+    { asset: config.assets.USDY, symbol: "USDY", apy: 4.5, tvl: 150_000_000, source: "Ondo Finance" },
+    { asset: config.assets.mETH, symbol: "mETH", apy: 3.8, tvl: 800_000_000, source: "Mantle LSP" },
+    { asset: config.assets.USDC, symbol: "USDC", apy: 2.5, tvl: 500_000_000, source: "Lendle / Init Capital" },
   ];
 }
 
-function fallbackPrices(): PriceData[] {
+function defaultPrices(): PriceData[] {
   return [
-    { asset: "USDY", priceUSD: 1.0 + (Math.random() * 0.004 - 0.002), change24h: Math.random() * 0.5 - 0.25, pegDeviation: Math.random() * 30 },
-    { asset: "mETH", priceUSD: 3200 + Math.random() * 400 - 200, change24h: Math.random() * 6 - 3, pegDeviation: Math.random() * 50 },
-    { asset: "USDC", priceUSD: 1.0 + (Math.random() * 0.002 - 0.001), change24h: Math.random() * 0.1 - 0.05, pegDeviation: Math.random() * 10 },
+    { asset: "USDY", priceUSD: 1.0, change24h: 0, pegDeviation: 0 },
+    { asset: "mETH", priceUSD: 3400, change24h: 0, pegDeviation: 0 },
+    { asset: "USDC", priceUSD: 1.0, change24h: 0, pegDeviation: 0 },
   ];
 }
 
@@ -92,31 +96,32 @@ export async function fetchYieldData(): Promise<YieldData[]> {
       {
         asset: config.assets.USDY,
         symbol: "USDY",
-        apy: usdyPool?.apy ?? (4.5 + Math.random() * 0.5),
+        apy: usdyPool?.apy ?? (cachedYields?.find(y => y.symbol === "USDY")?.apy ?? 4.5),
         tvl: usdyPool?.tvlUsd ?? 150_000_000,
         source: usdyPool?.project ?? "Ondo Finance",
       },
       {
         asset: config.assets.mETH,
         symbol: "mETH",
-        apy: methPool?.apy ?? (3.8 + Math.random() * 0.5),
+        apy: methPool?.apy ?? (cachedYields?.find(y => y.symbol === "mETH")?.apy ?? 3.8),
         tvl: methPool?.tvlUsd ?? 800_000_000,
         source: methPool?.project ?? "Mantle LSP",
       },
       {
         asset: config.assets.USDC,
         symbol: "USDC",
-        apy: usdcPool?.apy ?? (2.5 + Math.random() * 0.5),
+        apy: usdcPool?.apy ?? (cachedYields?.find(y => y.symbol === "USDC")?.apy ?? 2.5),
         tvl: usdcPool?.tvlUsd ?? 500_000_000,
         source: usdcPool?.project ?? "Lendle / Init Capital",
       },
     ];
 
     console.log("[DataFeeds] Yield data fetched from DeFiLlama");
+    cachedYields = yields;
     return yields;
   } catch (error) {
-    console.warn("[DataFeeds] DeFiLlama API failed, using fallback:", (error as Error).message);
-    return fallbackYields();
+    console.warn("[DataFeeds] DeFiLlama API failed, using cached data:", (error as Error).message);
+    return cachedYields || defaultYields();
   }
 }
 
@@ -159,10 +164,11 @@ export async function fetchPriceData(): Promise<PriceData[]> {
     ];
 
     console.log("[DataFeeds] Price data fetched from CoinGecko");
+    cachedPrices = prices;
     return prices;
   } catch (error) {
-    console.warn("[DataFeeds] CoinGecko API failed, using fallback:", (error as Error).message);
-    return fallbackPrices();
+    console.warn("[DataFeeds] CoinGecko API failed, using cached data:", (error as Error).message);
+    return cachedPrices || defaultPrices();
   }
 }
 

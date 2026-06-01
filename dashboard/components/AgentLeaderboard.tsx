@@ -96,7 +96,7 @@ export default function AgentLeaderboard() {
       </div>
 
       <p className="text-[11px] text-s-text-muted mt-4 pt-3 border-t border-gray-100">
-        All agents verified on-chain via ERC-8004 identity NFTs on Mantle.
+        All agents verified on-chain via Agent Identity NFTs on Mantle.
         <a href={`https://mantlescan.xyz/address/${process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || ""}`} target="_blank" rel="noopener" className="ml-1 text-indigo-500 hover:underline">View contract</a>
       </p>
     </div>

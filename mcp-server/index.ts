@@ -1,25 +1,23 @@
-import { createServer } from "http";
 import { ethers } from "ethers";
 import * as dotenv from "dotenv";
+import * as readline from "readline";
 
 dotenv.config({ path: "../.env" });
 
 /**
- * Sentinel MCP Server
+ * Sentinel MCP Server (stdio transport)
  *
- * A Model Context Protocol (MCP) server that exposes the Sentinel AI Treasury
- * as tools for any LLM (Claude, GPT, etc). Paste the config into your AI assistant
- * and it gains the ability to manage your DeFi portfolio on Mantle.
+ * A Model Context Protocol server that exposes the Sentinel AI Treasury
+ * as tools for Claude Desktop or any MCP-compatible client.
  *
- * Tools exposed:
- * - get_portfolio: Read current portfolio state
+ * Tools:
+ * - get_portfolio: Read current vault portfolio on Mantle
  * - get_yields: Fetch live yield rates from DeFi protocols
- * - get_decisions: Read recent AI agent decisions
+ * - get_decisions: Read recent on-chain AI decisions
  * - trigger_rebalance: Request the agent to evaluate and rebalance
- * - get_agent_status: Check agent health and stats
+ * - get_agent_status: Check agent identity and stats on-chain
  */
 
-const PORT = parseInt(process.env.MCP_PORT || "3100");
 const RPC = process.env.MANTLE_MAINNET_RPC || "https://rpc.mantle.xyz";
 const VAULT_ADDRESS = process.env.VAULT_ADDRESS || "";
 const LOGGER_ADDRESS = process.env.LOGGER_ADDRESS || "";
@@ -45,23 +43,23 @@ const TOKEN_DECIMALS: Record<string, number> = { USDY: 18, mETH: 18, USDC: 6 };
 
 const provider = new ethers.JsonRpcProvider(RPC);
 
-// MCP Tool Definitions
+// --- Tool Definitions ---
 const TOOLS = [
   {
     name: "get_portfolio",
     description: "Get the current Sentinel vault portfolio on Mantle — shows all assets, their USD values, allocations, and blended yield.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
   {
     name: "get_yields",
     description: "Fetch live DeFi yield rates from Mantle protocols (Ondo USDY, mETH staking, USDC lending) via DeFiLlama.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
   {
     name: "get_decisions",
-    description: "Read recent AI agent decisions logged immutably on-chain, including reasoning, allocations, and risk levels.",
+    description: "Read recent AI agent decisions logged on-chain, including reasoning, allocations, and risk levels.",
     inputSchema: {
-      type: "object",
+      type: "object" as const,
       properties: { count: { type: "number", description: "Number of recent decisions to fetch (default 5)" } },
       required: [],
     },
@@ -69,23 +67,22 @@ const TOOLS = [
   {
     name: "trigger_rebalance",
     description: "Request the Sentinel agent to evaluate current market conditions and decide whether to rebalance. Returns the analysis steps.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
   {
     name: "get_agent_status",
-    description: "Get the Sentinel AI agent's current status — name, strategy, total decisions, ROI, uptime, and on-chain identity.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+    description: "Get the Sentinel AI agent's on-chain identity — name, strategy, total decisions, ROI, and identity NFT.",
+    inputSchema: { type: "object" as const, properties: {}, required: [] },
   },
 ];
 
-// Tool Implementations
+// --- Tool Implementations ---
 async function getPortfolio() {
-  if (!VAULT_ADDRESS) return { error: "Vault not deployed yet" };
+  if (!VAULT_ADDRESS) return { error: "VAULT_ADDRESS not configured in environment" };
   const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, provider);
   const [, names, balances, allocations] = await vault.getPortfolio();
   const rebalanceCount = await vault.rebalanceCount();
 
-  // Fetch prices
   const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=mantle-staked-ether,ondo-us-dollar-yield,usd-coin&vs_currencies=usd");
   const priceData = await priceRes.json();
   const prices: Record<string, number> = {
@@ -139,7 +136,7 @@ async function getYields() {
 }
 
 async function getDecisions(count = 5) {
-  if (!LOGGER_ADDRESS) return { error: "Logger not deployed" };
+  if (!LOGGER_ADDRESS) return { error: "LOGGER_ADDRESS not configured in environment" };
   const logger = new ethers.Contract(LOGGER_ADDRESS, LOGGER_ABI, provider);
   const decisions = await logger.getRecentDecisions(count);
 
@@ -157,7 +154,6 @@ async function getDecisions(count = 5) {
 }
 
 async function triggerRebalance() {
-  // Call the dashboard's agent-cycle API
   const dashboardUrl = process.env.DASHBOARD_URL || "http://localhost:3000";
   try {
     const res = await fetch(`${dashboardUrl}/api/agent-cycle`, { method: "POST" });
@@ -167,15 +163,15 @@ async function triggerRebalance() {
       steps: data.steps?.map((s: any) => `[${s.type.toUpperCase()}] ${s.message}`) || [],
     };
   } catch {
-    return { status: "error", message: "Dashboard not running. Start with: npm run dev" };
+    return { status: "error", message: "Could not reach dashboard. Make sure it is running (npm run dev)." };
   }
 }
 
 async function getAgentStatus() {
-  if (!IDENTITY_ADDRESS || !AGENT_ADDRESS) return { error: "Identity contract not deployed" };
+  if (!IDENTITY_ADDRESS || !AGENT_ADDRESS) return { error: "IDENTITY_ADDRESS and AGENT_WALLET_ADDRESS must be set in environment" };
   const identity = new ethers.Contract(IDENTITY_ADDRESS, IDENTITY_ABI, provider);
   const tokenId = await identity.agentToToken(AGENT_ADDRESS);
-  if (tokenId === BigInt(0)) return { error: "Agent not registered" };
+  if (tokenId === BigInt(0)) return { error: "Agent not registered on-chain" };
 
   const meta = await identity.getAgentMetadata(tokenId);
   return {
@@ -186,92 +182,100 @@ async function getAgentStatus() {
     createdAt: new Date(Number(meta.createdAt) * 1000).toISOString(),
     lastActive: new Date(Number(meta.lastActiveAt) * 1000).toISOString(),
     wallet: AGENT_ADDRESS,
-    identityNFT: `ERC-8004 #${Number(tokenId)}`,
+    identityNFT: `Agent Identity #${Number(tokenId)}`,
     network: "Mantle Mainnet (chainId 5000)",
     explorer: `https://mantlescan.xyz/address/${AGENT_ADDRESS}`,
   };
 }
 
-// MCP HTTP Handler (JSON-RPC 2.0)
-const server = createServer(async (req, res) => {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+// --- stdio JSON-RPC transport ---
+function send(message: object) {
+  const json = JSON.stringify(message);
+  process.stdout.write(json + "\n");
+}
 
-  if (req.method === "OPTIONS") {
-    res.writeHead(200);
-    res.end();
+function sendResult(id: string | number, result: any) {
+  send({ jsonrpc: "2.0", id, result });
+}
+
+function sendError(id: string | number | null, code: number, message: string) {
+  send({ jsonrpc: "2.0", id, error: { code, message } });
+}
+
+async function handleMessage(raw: string) {
+  let request: any;
+  try {
+    request = JSON.parse(raw);
+  } catch {
+    sendError(null, -32700, "Parse error");
     return;
   }
 
-  if (req.method !== "POST") {
-    res.writeHead(405);
-    res.end(JSON.stringify({ error: "POST only" }));
+  const { method, params, id } = request;
+
+  // Notifications (no id) — acknowledge silently
+  if (id === undefined || id === null) {
+    // notifications/initialized, notifications/cancelled, etc.
     return;
   }
 
-  let body = "";
-  req.on("data", (chunk) => (body += chunk));
-  req.on("end", async () => {
-    try {
-      const request = JSON.parse(body);
-      const { method, params, id } = request;
+  switch (method) {
+    case "initialize":
+      sendResult(id, {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "sentinel-treasury", version: "1.0.0" },
+      });
+      break;
 
-      let result: any;
+    case "ping":
+      sendResult(id, {});
+      break;
 
-      switch (method) {
-        case "initialize":
-          result = {
-            protocolVersion: "2024-11-05",
-            capabilities: { tools: {} },
-            serverInfo: { name: "sentinel-treasury", version: "1.0.0" },
-          };
-          break;
+    case "tools/list":
+      sendResult(id, { tools: TOOLS });
+      break;
 
-        case "tools/list":
-          result = { tools: TOOLS };
-          break;
+    case "tools/call": {
+      const toolName = params?.name;
+      const toolArgs = params?.arguments || {};
 
-        case "tools/call":
-          const toolName = params?.name;
-          const toolArgs = params?.arguments || {};
-
-          try {
-            let content: any;
-            switch (toolName) {
-              case "get_portfolio": content = await getPortfolio(); break;
-              case "get_yields": content = await getYields(); break;
-              case "get_decisions": content = await getDecisions(toolArgs.count || 5); break;
-              case "trigger_rebalance": content = await triggerRebalance(); break;
-              case "get_agent_status": content = await getAgentStatus(); break;
-              default: content = { error: `Unknown tool: ${toolName}` };
-            }
-            result = { content: [{ type: "text", text: JSON.stringify(content, null, 2) }] };
-          } catch (err: any) {
-            result = { content: [{ type: "text", text: `Error: ${err.message}` }], isError: true };
-          }
-          break;
-
-        default:
-          result = { error: `Unknown method: ${method}` };
+      try {
+        let content: any;
+        switch (toolName) {
+          case "get_portfolio": content = await getPortfolio(); break;
+          case "get_yields": content = await getYields(); break;
+          case "get_decisions": content = await getDecisions(toolArgs.count || 5); break;
+          case "trigger_rebalance": content = await triggerRebalance(); break;
+          case "get_agent_status": content = await getAgentStatus(); break;
+          default:
+            sendError(id, -32602, `Unknown tool: ${toolName}`);
+            return;
+        }
+        sendResult(id, {
+          content: [{ type: "text", text: JSON.stringify(content, null, 2) }],
+        });
+      } catch (err: any) {
+        sendResult(id, {
+          content: [{ type: "text", text: `Error: ${err.message}` }],
+          isError: true,
+        });
       }
-
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ jsonrpc: "2.0", id, result }));
-    } catch (err: any) {
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32700, message: err.message } }));
+      break;
     }
-  });
+
+    default:
+      sendError(id, -32601, `Method not found: ${method}`);
+  }
+}
+
+// --- Start reading from stdin ---
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on("line", (line) => {
+  const trimmed = line.trim();
+  if (trimmed) handleMessage(trimmed);
 });
 
-server.listen(PORT, () => {
-  console.log(`\n╔══════════════════════════════════════════════╗`);
-  console.log(`║  Sentinel MCP Server running on port ${PORT}   ║`);
-  console.log(`╚══════════════════════════════════════════════╝\n`);
-  console.log(`Tools available:`);
-  TOOLS.forEach((t) => console.log(`  • ${t.name} — ${t.description.slice(0, 60)}...`));
-  console.log(`\nAdd to Claude Desktop → Settings → MCP Servers`);
-  console.log(`Or use the config from: mcp-server/claude-config.json\n`);
-});
+// Log to stderr (not stdout — stdout is for MCP protocol only)
+process.stderr.write("[Sentinel MCP] Server started (stdio transport)\n");
+process.stderr.write(`[Sentinel MCP] Tools: ${TOOLS.map(t => t.name).join(", ")}\n`);

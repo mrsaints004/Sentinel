@@ -44,8 +44,8 @@ export function verifyLinkToken(token: string, chatId: number): { success: boole
     return { success: false, error: "Link expired. Generate a new one from the dashboard." };
   }
 
-  // Link the wallet to this chat
-  store.linkedWallets[pending.walletAddress] = chatId;
+  // Link the wallet to this chat (always lowercase for consistent lookups)
+  store.linkedWallets[pending.walletAddress.toLowerCase()] = chatId;
   delete store.pendingTokens[trimmed];
   writeStore(store);
 

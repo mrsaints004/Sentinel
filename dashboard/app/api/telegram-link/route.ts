@@ -5,6 +5,10 @@ import * as path from "path";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isValidAddress(addr: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(addr);
+}
+
 // Resolve to project root (dashboard cwd is /mantle/dashboard, so go up one level)
 const STORE_PATH = path.resolve(process.cwd(), "..", ".telegram-links.json");
 
@@ -34,6 +38,10 @@ export async function POST(request: Request) {
 
     if (!walletAddress || typeof walletAddress !== "string") {
       return NextResponse.json({ error: "walletAddress required" }, { status: 400 });
+    }
+
+    if (!isValidAddress(walletAddress)) {
+      return NextResponse.json({ error: "Invalid wallet address" }, { status: 400 });
     }
 
     const address = walletAddress.toLowerCase();
@@ -84,6 +92,10 @@ export async function GET(request: Request) {
 
     if (!walletAddress) {
       return NextResponse.json({ error: "wallet param required" }, { status: 400 });
+    }
+
+    if (!isValidAddress(walletAddress)) {
+      return NextResponse.json({ error: "Invalid wallet address" }, { status: 400 });
     }
 
     const store = readStore();

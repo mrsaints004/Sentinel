@@ -1,5 +1,14 @@
 "use client";
 
+interface ReputationMetrics {
+  winRate: number;       // bps (0-10000)
+  avgConfidence: number; // 0-100
+  maxDrawdownBps: number;
+  streakLength: number;  // positive = wins, negative = losses
+  accuracyScore: number; // 0-1000
+  totalGames: number;
+}
+
 interface AgentInfo {
   agentName: string;
   strategyType: string;
@@ -9,6 +18,7 @@ interface AgentInfo {
   uptime: number;
   walletAddress: string;
   lastActive: string;
+  reputation?: ReputationMetrics;
 }
 
 function formatUptime(seconds: number): string {
@@ -20,8 +30,21 @@ function formatUptime(seconds: number): string {
   return `${mins}m`;
 }
 
+function formatStreak(streak: number): string {
+  if (streak === 0) return "—";
+  if (streak > 0) return `W${streak}`;
+  return `L${Math.abs(streak)}`;
+}
+
+function getScoreColor(score: number): string {
+  if (score >= 700) return "text-s-green";
+  if (score >= 400) return "text-yellow-400";
+  return "text-s-red";
+}
+
 export default function AgentStatus({ agent }: { agent: AgentInfo }) {
   const roi = (agent.cumulativeROIBps / 100).toFixed(2);
+  const rep = agent.reputation;
 
   return (
     <div className="card">
@@ -45,11 +68,11 @@ export default function AgentStatus({ agent }: { agent: AgentInfo }) {
           </div>
         </div>
         <div className="shrink-0 px-2 py-1 rounded-md bg-s-accent-light text-s-accent text-[10px] font-semibold">
-          ERC-8004
+          Agent ID
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="text-center p-3 rounded-xl bg-s-bg border border-s-border">
           <div className="stat-value">{agent.totalDecisions}</div>
           <div className="stat-label">Decisions</div>
@@ -65,6 +88,48 @@ export default function AgentStatus({ agent }: { agent: AgentInfo }) {
           <div className="stat-label">Uptime</div>
         </div>
       </div>
+
+      {rep && (
+        <div className="mt-1">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-semibold text-s-text-muted uppercase tracking-wider">
+              On-Chain Reputation
+            </h3>
+            <span className={`text-xs font-bold ${getScoreColor(rep.accuracyScore)}`}>
+              Score: {rep.accuracyScore}/1000
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            <div className="text-center p-2.5 rounded-xl bg-s-bg border border-s-border">
+              <div className={`text-sm font-bold ${rep.winRate >= 5000 ? "text-s-green" : "text-s-red"}`}>
+                {(rep.winRate / 100).toFixed(1)}%
+              </div>
+              <div className="stat-label">Win Rate</div>
+            </div>
+            <div className="text-center p-2.5 rounded-xl bg-s-bg border border-s-border">
+              <div className="text-sm font-bold text-s-text">
+                {rep.avgConfidence}%
+              </div>
+              <div className="stat-label">Avg Conf.</div>
+            </div>
+            <div className="text-center p-2.5 rounded-xl bg-s-bg border border-s-border">
+              <div className={`text-sm font-bold ${rep.streakLength > 0 ? "text-s-green" : rep.streakLength < 0 ? "text-s-red" : "text-s-text"}`}>
+                {formatStreak(rep.streakLength)}
+              </div>
+              <div className="stat-label">Streak</div>
+            </div>
+            <div className="text-center p-2.5 rounded-xl bg-s-bg border border-s-border">
+              <div className={`text-sm font-bold ${rep.maxDrawdownBps < 500 ? "text-s-green" : "text-s-red"}`}>
+                {(rep.maxDrawdownBps / 100).toFixed(1)}%
+              </div>
+              <div className="stat-label">Max DD</div>
+            </div>
+          </div>
+          <div className="mt-2 text-[10px] text-s-text-muted text-center">
+            Verified on-chain ({rep.totalGames} decisions tracked)
+          </div>
+        </div>
+      )}
     </div>
   );
 }

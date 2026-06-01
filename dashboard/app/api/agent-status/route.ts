@@ -42,6 +42,23 @@ export async function GET() {
         const createdAt = Number(metadata.createdAt) * 1000;
         const uptimeSeconds = Math.floor((Date.now() - createdAt) / 1000);
 
+        // Fetch on-chain reputation metrics
+        let reputation = null;
+        try {
+          const [winRate, avgConfidence, maxDrawdownBps, streakLength, accuracyScore, totalGames] =
+            await identity.computeReputation(tokenId);
+          reputation = {
+            winRate: Number(winRate),
+            avgConfidence: Number(avgConfidence),
+            maxDrawdownBps: Number(maxDrawdownBps),
+            streakLength: Number(streakLength),
+            accuracyScore: Number(accuracyScore),
+            totalGames: Number(totalGames),
+          };
+        } catch {
+          // Reputation not available yet
+        }
+
         return NextResponse.json({
           agentName: metadata.agentName,
           strategyType: metadata.strategyType,
@@ -52,6 +69,7 @@ export async function GET() {
           walletAddress: agentAddress,
           lastActive: new Date(Number(metadata.lastActiveAt) * 1000).toISOString(),
           portfolioHistory,
+          reputation,
           source: "on-chain-mainnet",
         });
       }

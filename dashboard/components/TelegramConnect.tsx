@@ -170,21 +170,24 @@ export default function TelegramConnect() {
 
         {showMCP && (
           <div className="rounded-xl bg-gray-900 p-3 text-xs font-mono text-gray-300 overflow-x-auto">
-            <div className="text-gray-500 mb-2">// Add to Claude Desktop settings &rarr; MCP Servers</div>
+            <div className="text-gray-500 mb-2">// Add to Claude Desktop &rarr; Settings &rarr; MCP Servers</div>
             <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">{`{
-  "sentinel-treasury": {
-    "url": "http://localhost:3100",
-    "tools": [
-      "get_portfolio",
-      "get_yields",
-      "get_decisions",
-      "trigger_rebalance",
-      "get_agent_status"
-    ]
+  "mcpServers": {
+    "sentinel-treasury": {
+      "command": "npx",
+      "args": ["ts-node", "mcp-server/index.ts"],
+      "cwd": "/path/to/mantle",
+      "env": {
+        "VAULT_ADDRESS": "your-vault",
+        "LOGGER_ADDRESS": "your-logger",
+        "IDENTITY_ADDRESS": "your-identity",
+        "AGENT_WALLET_ADDRESS": "your-agent"
+      }
+    }
   }
 }`}</pre>
-            <div className="mt-2 text-gray-500">
-              Start server: <span className="text-violet-400">npx ts-node mcp-server/index.ts</span>
+            <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500">
+              Tools: <span className="text-violet-400">get_portfolio</span>, <span className="text-violet-400">get_yields</span>, <span className="text-violet-400">get_decisions</span>, <span className="text-violet-400">trigger_rebalance</span>, <span className="text-violet-400">get_agent_status</span>
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import * as path from "path";
 
 const LOG_PATH = path.join(__dirname, "..", ".activity-log.json");
@@ -16,34 +16,47 @@ export interface ActivityEntry {
   timestamp: number;
 }
 
-function readLog(): ActivityEntry[] {
+// In-memory cache to avoid reading from disk on every call
+let logCache: ActivityEntry[] | null = null;
+
+async function readLog(): Promise<ActivityEntry[]> {
+  if (logCache) return logCache;
   try {
-    if (fs.existsSync(LOG_PATH)) {
-      return JSON.parse(fs.readFileSync(LOG_PATH, "utf-8"));
-    }
-  } catch {}
-  return [];
+    const data = await fs.readFile(LOG_PATH, "utf-8");
+    logCache = JSON.parse(data);
+    return logCache!;
+  } catch {
+    logCache = [];
+    return [];
+  }
 }
 
-function writeLog(entries: ActivityEntry[]): void {
+async function writeLog(entries: ActivityEntry[]): Promise<void> {
   // Keep last 100 entries
   const trimmed = entries.slice(-100);
-  fs.writeFileSync(LOG_PATH, JSON.stringify(trimmed, null, 2));
+  logCache = trimmed;
+  await fs.writeFile(LOG_PATH, JSON.stringify(trimmed, null, 2));
 }
 
-export function logActivity(entry: Omit<ActivityEntry, "id" | "timestamp">): ActivityEntry {
-  const log = readLog();
+export function logActivity(entry: Omit<ActivityEntry, "id" | "timestamp">): void {
+  // Fire-and-forget async write to avoid blocking the agent loop
+  _logAsync(entry).catch((err) =>
+    console.warn("[ActivityLog] Write failed:", err.message)
+  );
+}
+
+async function _logAsync(entry: Omit<ActivityEntry, "id" | "timestamp">): Promise<void> {
+  const log = await readLog();
   const newEntry: ActivityEntry = {
     ...entry,
     id: log.length + 1,
     timestamp: Date.now(),
   };
   log.push(newEntry);
-  writeLog(log);
-  return newEntry;
+  await writeLog(log);
 }
 
-export function getRecentActivity(limit = 20): ActivityEntry[] {
-  const log = readLog();
+export async function getRecentActivity(limit = 20): Promise<ActivityEntry[]> {
+  const log = await readLog();
   return log.slice(-limit).reverse();
 }

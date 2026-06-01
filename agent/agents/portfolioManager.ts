@@ -260,16 +260,17 @@ export class PortfolioManagerAgent {
   }
 
   /**
-   * Enhance decision with Gemini AI reasoning.
-   * Takes the rule-based decision and enriches it with AI-generated reasoning,
-   * or lets the AI override allocations if it's confident.
+   * Enhance decision with Gemini AI reasoning AND allocation adjustments.
+   * The AI can override allocations within safe bounds (no single asset > 60%,
+   * must sum to 10000 bps). Falls back to rule-based if AI fails.
    */
   async enhanceWithAI(
     decision: PortfolioDecision,
     market: MarketOutlook,
     yields: YieldAnalysis,
     risk: RiskAnalysis,
-    currentAllocations: { symbol: string; allocationBps: number }[]
+    currentAllocations: { symbol: string; allocationBps: number }[],
+    crossChainContext: string = ""
   ): Promise<PortfolioDecision> {
     if (!config.openaiApiKey) return decision;
 
@@ -302,26 +303,71 @@ RISK ASSESSMENT:
 - Warnings: ${risk.exposureWarnings.map(w => `${w.asset}: ${w.issue}`).join("; ") || "None"}
 - Recommendation: ${risk.recommendation}
 
-RULE-BASED DECISION:
+RULE-BASED SUGGESTION:
 - Action: ${decision.action}
-- New Allocations: ${decision.newAllocations.map(a => `${a.symbol}: ${(a.allocationBps/100).toFixed(1)}%`).join(", ")}
+- Allocations: ${decision.newAllocations.map(a => `${a.symbol}: ${(a.allocationBps/100).toFixed(1)}%`).join(", ")}
+${crossChainContext ? `\nCROSS-CHAIN INTELLIGENCE (Byreal Agent Skills — Solana CLMM):\n${crossChainContext}\nUse this to judge if Mantle yields are competitive. If Solana yields are significantly higher for similar risk, mention it in reasoning.\n` : ""}
+You may adjust the allocations if you see a better opportunity. Respond with ONLY valid JSON:
+{
+  "action": "rebalance" | "hold",
+  "reasoning": "2-3 sentences explaining WHY, referencing specific data points",
+  "USDY": <number 1000-6000>,
+  "mETH": <number 1000-6000>,
+  "USDC": <number 1000-6000>
+}
 
-Generate a concise 2-3 sentence reasoning explaining WHY this decision was made. Reference specific data points. Be analytical and professional. Do NOT include JSON. Just the reasoning text.`;
+RULES:
+- All three values MUST sum to exactly 10000
+- No single asset above 6000 (60%)
+- No single asset below 1000 (10%)
+- If risk score >= 7, stablecoins (USDY+USDC) should be >= 6000
+- Be analytical and reference specific yield rates, momentum, and risk data`;
 
       const response = await openai.chat.completions.create({
         model: GEMINI_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
-        max_tokens: 200,
+        max_tokens: 300,
       });
 
-      const aiReasoning = response.choices[0]?.message?.content?.trim();
-      if (aiReasoning && aiReasoning.length > 20) {
-        decision.reasoning = aiReasoning;
-        console.log("  [Gemini] AI reasoning generated successfully");
+      const content = response.choices[0]?.message?.content?.trim();
+      if (!content) throw new Error("Empty AI response");
+
+      // Parse JSON from response (handle markdown code blocks)
+      const jsonStr = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const aiResult = JSON.parse(jsonStr);
+
+      // Validate AI allocations
+      const usdyBps = Number(aiResult.USDY);
+      const methBps = Number(aiResult.mETH);
+      const usdcBps = Number(aiResult.USDC);
+      const sum = usdyBps + methBps + usdcBps;
+
+      if (
+        sum === 10000 &&
+        usdyBps >= 1000 && usdyBps <= 6000 &&
+        methBps >= 1000 && methBps <= 6000 &&
+        usdcBps >= 1000 && usdcBps <= 6000 &&
+        aiResult.reasoning && aiResult.reasoning.length > 20
+      ) {
+        // AI allocations are valid — apply them
+        decision.newAllocations = [
+          { asset: config.assets.USDY, symbol: "USDY", allocationBps: usdyBps },
+          { asset: config.assets.mETH, symbol: "mETH", allocationBps: methBps },
+          { asset: config.assets.USDC, symbol: "USDC", allocationBps: usdcBps },
+        ];
+        decision.reasoning = aiResult.reasoning;
+        if (aiResult.action === "hold" || aiResult.action === "rebalance") {
+          decision.action = aiResult.action;
+        }
+        console.log("  [Gemini] AI adjusted allocations and reasoning");
+      } else if (aiResult.reasoning && aiResult.reasoning.length > 20) {
+        // Reasoning is good but allocations failed validation — keep rule-based allocations
+        decision.reasoning = aiResult.reasoning;
+        console.log("  [Gemini] AI reasoning applied (allocations failed validation, using rule-based)");
       }
     } catch (error) {
-      console.warn("  [Gemini] AI reasoning failed, using rule-based:", (error as Error).message);
+      console.warn("  [Gemini] AI enhancement failed, using rule-based:", (error as Error).message);
     }
 
     return decision;

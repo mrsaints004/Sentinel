@@ -38,6 +38,7 @@ const LOGGER_ABI = [
 const IDENTITY_ABI = [
   "function agentToToken(address) external view returns (uint256)",
   "function getAgentMetadata(uint256 tokenId) external view returns (tuple(string agentName, string strategyType, uint256 totalDecisions, int256 cumulativeROIBps, uint256 createdAt, uint256 lastActiveAt, address vaultAddress, address loggerAddress))",
+  "function computeReputation(uint256 tokenId) external view returns (uint256 winRate, uint256 avgConfidence, uint256 maxDrawdownBps, int256 streakLength, uint256 accuracyScore, uint256 totalGames, uint256 computedAt)",
 ];
 
 export function getVaultContract(): ethers.Contract | null {

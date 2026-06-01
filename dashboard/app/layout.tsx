@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { WalletProviderWrapper } from "../components/WalletProvider";
 
 export const metadata: Metadata = {
-  title: "Sentinel — Autonomous RWA Portfolio Manager on Mantle",
-  description: "AI-powered autonomous agent managing Real World Assets on Mantle blockchain",
+  title: "Sentinel — AI Treasury on Mantle",
+  description: "Deposit USDC. Set your risk level. Sentinel's AI earns yield on Mantle — fully autonomous, fully on-chain.",
 };
 
 export default function RootLayout({
@@ -20,7 +21,9 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-s-bg text-s-text antialiased">
-        {children}
+        <WalletProviderWrapper>
+          {children}
+        </WalletProviderWrapper>
       </body>
     </html>
   );

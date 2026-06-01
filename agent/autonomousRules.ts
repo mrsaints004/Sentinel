@@ -1,3 +1,8 @@
+import * as fs from "fs";
+import * as path from "path";
+
+const RULES_PATH = path.join(__dirname, "..", ".autonomous-rules.json");
+
 export interface AutonomousRules {
   enabled: boolean;
   maxPortfolioChangeBps: number;  // max single-asset change per trade (e.g. 2000 = 20%)
@@ -25,9 +30,33 @@ const DEFAULT_RULES: AutonomousRules = {
   minConfidence: 60,
 };
 
-let rules: AutonomousRules = { ...DEFAULT_RULES };
+// Load persisted rules from disk
+function loadRules(): AutonomousRules {
+  try {
+    if (fs.existsSync(RULES_PATH)) {
+      const data = JSON.parse(fs.readFileSync(RULES_PATH, "utf-8"));
+      return { ...DEFAULT_RULES, ...data };
+    }
+  } catch {}
+  return { ...DEFAULT_RULES };
+}
+
+function persistRules(r: AutonomousRules): void {
+  try {
+    fs.writeFileSync(RULES_PATH, JSON.stringify(r, null, 2));
+  } catch (err) {
+    console.warn("[AutonomousRules] Failed to persist rules:", (err as Error).message);
+  }
+}
+
+let rules: AutonomousRules = loadRules();
 let tradesToday: number = 0;
 let lastTradeDate: string = "";
+
+// Use UTC date string for timezone-independent daily reset
+function getUTCDateString(): string {
+  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+}
 
 export function getRules(): AutonomousRules {
   return { ...rules };
@@ -35,17 +64,19 @@ export function getRules(): AutonomousRules {
 
 export function setRules(update: Partial<AutonomousRules>): AutonomousRules {
   rules = { ...rules, ...update };
+  persistRules(rules);
   return { ...rules };
 }
 
 export function enableAutonomous(enabled: boolean): AutonomousRules {
   rules.enabled = enabled;
+  persistRules(rules);
   return { ...rules };
 }
 
 export function resetDailyCounter(): void {
   tradesToday = 0;
-  lastTradeDate = new Date().toDateString();
+  lastTradeDate = getUTCDateString();
 }
 
 export function checkTrade(
@@ -58,8 +89,8 @@ export function checkTrade(
   currentAllocations: { symbol: string; allocationBps: number }[],
   riskScore: number
 ): TradeCheck {
-  // Reset daily counter if new day
-  const today = new Date().toDateString();
+  // Reset daily counter if new day (UTC)
+  const today = getUTCDateString();
   if (today !== lastTradeDate) {
     tradesToday = 0;
     lastTradeDate = today;
@@ -152,7 +183,7 @@ export function checkTrade(
 }
 
 export function getTradesToday(): number {
-  const today = new Date().toDateString();
+  const today = getUTCDateString();
   if (today !== lastTradeDate) return 0;
   return tradesToday;
 }

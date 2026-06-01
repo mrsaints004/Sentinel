@@ -14,6 +14,7 @@ import AutonomousSettings from "@/components/AutonomousSettings";
 import ByrealSkills from "@/components/ByrealSkills";
 import DepositForm from "@/components/DepositForm";
 import TelegramConnect from "@/components/TelegramConnect";
+import HowItWorks from "@/components/HowItWorks";
 import { useWallet, ConnectButton } from "@/components/WalletProvider";
 
 interface PortfolioData {
@@ -70,6 +71,130 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Show hero landing page when wallet is not connected
+  if (!wallet.isConnected) {
+    return (
+      <div className="min-h-screen bg-s-bg">
+        {/* Header */}
+        <header className="sticky top-0 z-50 bg-white border-b border-s-border">
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-s-accent flex items-center justify-center">
+                <span className="text-sm font-black text-white">S</span>
+              </div>
+              <div>
+                <h1 className="text-sm font-bold text-s-text leading-none">Sentinel</h1>
+                <p className="text-[10px] text-s-text-muted leading-none mt-0.5">AI Treasury</p>
+              </div>
+            </div>
+            <ConnectButton
+              address={wallet.address}
+              isConnected={wallet.isConnected}
+              isConnecting={wallet.isConnecting}
+              balance={wallet.balance}
+              chainName={wallet.chainName}
+              chainId={wallet.chainId}
+              error={wallet.error}
+              hasProvider={wallet.hasProvider}
+              onConnect={wallet.connect}
+              onDisconnect={wallet.disconnect}
+            />
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <main className="max-w-[800px] mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-s-accent flex items-center justify-center">
+              <span className="text-3xl font-black text-white">S</span>
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-s-text mb-3">
+              Your AI Treasury on Mantle
+            </h1>
+            <p className="text-base sm:text-lg text-s-text-muted max-w-[560px] mx-auto">
+              Set your risk level. Sentinel watches DeFi yields 24/7 and rebalances your portfolio — all on-chain, fully autonomous.
+            </p>
+          </div>
+
+          {/* Feature pills */}
+          <div className="flex items-center justify-center gap-3 mb-10">
+            <span className="px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs font-medium text-teal-700">
+              Live Yields
+            </span>
+            <span className="px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200 text-xs font-medium text-indigo-700">
+              AI Rebalancing
+            </span>
+            <span className="px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-xs font-medium text-violet-700">
+              On-Chain Proof
+            </span>
+          </div>
+
+          {/* CTA */}
+          <button
+            onClick={wallet.connect}
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-s-accent text-white font-semibold text-sm hover:bg-s-accent/90 transition-colors shadow-lg shadow-s-accent/20"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Connect Wallet to Start
+          </button>
+
+          {/* How it works */}
+          <div className="mt-16 text-left max-w-[480px] mx-auto">
+            <h2 className="text-sm font-semibold text-s-text mb-6 text-center">How it works</h2>
+            <div className="space-y-5">
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-bold text-s-accent">1</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-s-text">Deposit USDC into the vault</p>
+                  <p className="text-xs text-s-text-muted mt-0.5">Your funds stay on Mantle — non-custodial, transparent.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-bold text-s-accent">2</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-s-text">Choose your risk level</p>
+                  <p className="text-xs text-s-text-muted mt-0.5">Conservative, moderate, or aggressive — you decide.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <span className="text-sm font-bold text-s-accent">3</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-s-text">Sentinel's AI manages the rest</p>
+                  <p className="text-xs text-s-text-muted mt-0.5">Rebalances, earns yield, logs every decision on-chain.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="max-w-[800px] mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t border-s-border">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 rounded bg-s-accent flex items-center justify-center">
+                <span className="text-[9px] font-black text-white">S</span>
+              </div>
+              <span className="text-xs text-s-text-muted">Built on Mantle · Powered by Gemini AI · On-chain Agent Identity NFTs</span>
+            </div>
+            <div className="flex items-center gap-3 text-[11px] text-s-text-muted">
+              <a href="https://t.me/SentinelTreasuryBot" target="_blank" rel="noopener noreferrer" className="hover:text-s-accent transition-colors">Telegram</a>
+              <span className="text-s-border">|</span>
+              <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="hover:text-s-accent transition-colors">GitHub</a>
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
   if (!portfolio || !agent) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -95,7 +220,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-sm font-bold text-s-text leading-none">Sentinel</h1>
-              <p className="text-[10px] text-s-text-muted leading-none mt-0.5">RWA Portfolio Manager</p>
+              <p className="text-[10px] text-s-text-muted leading-none mt-0.5">AI Treasury</p>
             </div>
           </div>
 
@@ -244,6 +369,9 @@ export default function Dashboard() {
               blendedYield={portfolio.blendedYield}
             />
 
+            {/* How It Works */}
+            <HowItWorks />
+
             {/* Cross-Chain Intelligence */}
             <ByrealSkills />
 
@@ -278,7 +406,7 @@ export default function Dashboard() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-s-text-muted">Identity</span>
-                  <span className="text-xs font-medium text-s-purple">ERC-8004 NFT</span>
+                  <span className="text-xs font-medium text-s-purple">Agent Identity NFT</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-s-text-muted">Network</span>
@@ -300,14 +428,12 @@ export default function Dashboard() {
             <div className="w-5 h-5 rounded bg-s-accent flex items-center justify-center">
               <span className="text-[9px] font-black text-white">S</span>
             </div>
-            <span className="text-xs text-s-text-muted">Sentinel - Autonomous RWA Portfolio Manager</span>
+            <span className="text-xs text-s-text-muted">Built on Mantle · Powered by Gemini AI · On-chain Agent Identity NFTs</span>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-s-text-muted">
-            <span>Turing Test Hackathon 2026</span>
+            <a href="https://t.me/SentinelTreasuryBot" target="_blank" rel="noopener noreferrer" className="hover:text-s-accent transition-colors">Telegram</a>
             <span className="text-s-border">|</span>
-            <span className="text-s-accent font-medium">Agentic Wallets</span>
-            <span className="text-s-border">|</span>
-            <span className="text-s-teal font-medium">AI x RWA</span>
+            <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="hover:text-s-accent transition-colors">GitHub</a>
           </div>
         </footer>
       </main>

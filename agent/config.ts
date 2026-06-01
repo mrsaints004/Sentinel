@@ -11,6 +11,7 @@ export const config = {
   vaultAddress: process.env.VAULT_ADDRESS || "",
   loggerAddress: process.env.LOGGER_ADDRESS || "",
   identityAddress: process.env.IDENTITY_ADDRESS || "",
+  consensusAddress: process.env.CONSENSUS_ADDRESS || "",
   swapRouterAddress: process.env.SWAP_ROUTER_ADDRESS || "",
 
   // Merchant Moe DEX

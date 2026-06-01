@@ -3,7 +3,7 @@ import { ethers } from "hardhat";
 /**
  * Mainnet Deployment Script for Mantle Treasury AI
  *
- * Deploys: SentinelVault, DecisionLogger, AgentIdentity
+ * Deploys: SentinelVault, DecisionLogger, AgentIdentity, AgentConsensus
  * Uses REAL tokens: USDY, mETH, USDC on Mantle Mainnet
  * Integrates with Merchant Moe LB Router for real DEX swaps
  */
@@ -33,7 +33,7 @@ async function main() {
   console.log("Balance:", ethers.formatEther(balance), "MNT");
 
   if (balance < ethers.parseEther("0.5")) {
-    console.error("\n⚠️  WARNING: Low MNT balance. Need at least 0.5 MNT for deployment.");
+    console.error("\n  WARNING: Low MNT balance. Need at least 0.5 MNT for deployment.");
     console.error("Get MNT from an exchange and send to:", deployer.address);
     process.exit(1);
   }
@@ -47,8 +47,8 @@ async function main() {
   console.log(`SentinelVault: ${vaultAddr}`);
   console.log(`  ${EXPLORER}/address/${vaultAddr}`);
 
-  // 2. Deploy DecisionLogger
-  console.log("\n--- Deploying DecisionLogger ---");
+  // 2. Deploy DecisionLogger (with commit-reveal)
+  console.log("\n--- Deploying DecisionLogger (commit-reveal enabled) ---");
   const Logger = await ethers.getContractFactory("DecisionLogger");
   const logger = await Logger.deploy(deployer.address);
   await logger.waitForDeployment();
@@ -56,8 +56,8 @@ async function main() {
   console.log(`DecisionLogger: ${loggerAddr}`);
   console.log(`  ${EXPLORER}/address/${loggerAddr}`);
 
-  // 3. Deploy AgentIdentity
-  console.log("\n--- Deploying AgentIdentity ---");
+  // 3. Deploy AgentIdentity (with reputation metrics)
+  console.log("\n--- Deploying AgentIdentity (reputation tracking enabled) ---");
   const Identity = await ethers.getContractFactory("AgentIdentity");
   const identity = await Identity.deploy();
   await identity.waitForDeployment();
@@ -65,7 +65,17 @@ async function main() {
   console.log(`AgentIdentity: ${identityAddr}`);
   console.log(`  ${EXPLORER}/address/${identityAddr}`);
 
-  // 4. Configure Vault with real tokens
+  // 4. Deploy AgentConsensus (multi-agent voting)
+  console.log("\n--- Deploying AgentConsensus (multi-agent voting) ---");
+  const ASSET_COUNT = 3; // USDY, mETH, USDC
+  const Consensus = await ethers.getContractFactory("AgentConsensus");
+  const consensus = await Consensus.deploy(ASSET_COUNT);
+  await consensus.waitForDeployment();
+  const consensusAddr = await consensus.getAddress();
+  console.log(`AgentConsensus: ${consensusAddr}`);
+  console.log(`  ${EXPLORER}/address/${consensusAddr}`);
+
+  // 5. Configure Vault with real tokens
   console.log("\n--- Configuring Vault with real Mantle tokens ---");
 
   await (await vault.addSupportedAsset(TOKENS.USDY, "USDY")).wait();
@@ -77,7 +87,7 @@ async function main() {
   await (await vault.addSupportedAsset(TOKENS.USDC, "USDC")).wait();
   console.log("Added USDC (Bridged USDC)");
 
-  // 5. Deploy MerchantMoeAdapter and set as swap router
+  // 6. Deploy MerchantMoeAdapter and set as swap router
   console.log("\n--- Deploying Merchant Moe Adapter ---");
   const Adapter = await ethers.getContractFactory("MerchantMoeAdapter");
   const adapter = await Adapter.deploy(MERCHANT_MOE_LB_ROUTER, MERCHANT_MOE_LB_FACTORY);
@@ -86,17 +96,17 @@ async function main() {
   console.log(`MerchantMoeAdapter: ${adapterAddr}`);
   console.log(`  Wraps LB Router: ${MERCHANT_MOE_LB_ROUTER}`);
 
-  // Configure bin steps for common pairs (typical bin step for stablecoin pairs: 1-5, volatile: 15-25)
-  await (await adapter.setBinStep(TOKENS.USDY, TOKENS.USDC, 1)).wait();  // Stable-stable pair
-  await (await adapter.setBinStep(TOKENS.mETH, TOKENS.USDC, 20)).wait(); // Volatile pair
-  await (await adapter.setBinStep(TOKENS.mETH, TOKENS.USDY, 20)).wait(); // Volatile pair
+  // Configure bin steps for common pairs
+  await (await adapter.setBinStep(TOKENS.USDY, TOKENS.USDC, 1)).wait();
+  await (await adapter.setBinStep(TOKENS.mETH, TOKENS.USDC, 20)).wait();
+  await (await adapter.setBinStep(TOKENS.mETH, TOKENS.USDY, 20)).wait();
   console.log("Bin steps configured for token pairs");
 
   // Set adapter as vault's swap router
   await (await vault.setSwapRouter(adapterAddr)).wait();
   console.log("Vault swap router set to MerchantMoeAdapter");
 
-  // 6. Configure DecisionLogger + AgentIdentity
+  // 7. Configure DecisionLogger + AgentIdentity
   console.log("\n--- Configuring contracts ---");
   await (await logger.setAgentIdentityContract(identityAddr)).wait();
   console.log("Logger linked to AgentIdentity");
@@ -104,7 +114,24 @@ async function main() {
   await (await identity.setUpdater(deployer.address)).wait();
   console.log("Identity updater set");
 
-  // 7. Register agent identity NFT (ERC-8004)
+  // 8. Register sub-agent wallets in AgentConsensus
+  console.log("\n--- Registering sub-agents for consensus voting ---");
+  // Derive sub-agent addresses (same logic as executor.ts)
+  const roles = ["market", "yield", "risk", "portfolio"];
+  const roleEnums = [0, 1, 2, 3]; // Market, Yield, Risk, Portfolio
+  for (let i = 0; i < roles.length; i++) {
+    const derivedKey = ethers.keccak256(
+      ethers.solidityPacked(["bytes32", "string"], [deployer.address, roles[i]])
+    );
+    const subWallet = new ethers.Wallet(derivedKey);
+    await (await consensus.registerAgent(subWallet.address, roleEnums[i])).wait();
+    console.log(`  Registered ${roles[i]} agent: ${subWallet.address}`);
+  }
+  // Also register the deployer as a registered agent (for startRound)
+  await (await consensus.registerAgent(deployer.address, 3)).wait();
+  console.log(`  Registered deployer as Portfolio agent: ${deployer.address}`);
+
+  // 9. Mint Agent Identity NFT
   console.log("\n--- Minting Agent Identity NFT ---");
   const tx = await identity.registerAgent(
     deployer.address,
@@ -114,7 +141,7 @@ async function main() {
     loggerAddr
   );
   await tx.wait();
-  console.log("Agent identity NFT minted (ERC-8004)");
+  console.log("Agent identity NFT minted (Agent Identity)");
 
   // Summary
   console.log("\n╔══════════════════════════════════════════════════════════╗");
@@ -124,6 +151,7 @@ async function main() {
   console.log(`  VAULT_ADDRESS=${vaultAddr}`);
   console.log(`  LOGGER_ADDRESS=${loggerAddr}`);
   console.log(`  IDENTITY_ADDRESS=${identityAddr}`);
+  console.log(`  CONSENSUS_ADDRESS=${consensusAddr}`);
   console.log(`  SWAP_ROUTER_ADDRESS=${adapterAddr}`);
   console.log(`  MERCHANT_MOE_ADAPTER=${adapterAddr}`);
   console.log("\nReal Tokens (Mantle Mainnet):");
@@ -131,13 +159,14 @@ async function main() {
   console.log(`  METH_ADDRESS=${TOKENS.mETH}`);
   console.log(`  USDC_ADDRESS=${TOKENS.USDC}`);
   console.log("\nExplorer Links:");
-  console.log(`  Vault:    ${EXPLORER}/address/${vaultAddr}`);
-  console.log(`  Logger:   ${EXPLORER}/address/${loggerAddr}`);
-  console.log(`  Identity: ${EXPLORER}/address/${identityAddr}`);
-  console.log(`  Adapter:  ${EXPLORER}/address/${adapterAddr}`);
-  console.log(`  Agent:    ${EXPLORER}/address/${deployer.address}`);
-  console.log("\n⚠️  Update your .env file with the addresses above.");
-  console.log("⚠️  To deposit, you need real USDY/mETH/USDC on Mantle.");
+  console.log(`  Vault:     ${EXPLORER}/address/${vaultAddr}`);
+  console.log(`  Logger:    ${EXPLORER}/address/${loggerAddr}`);
+  console.log(`  Identity:  ${EXPLORER}/address/${identityAddr}`);
+  console.log(`  Consensus: ${EXPLORER}/address/${consensusAddr}`);
+  console.log(`  Adapter:   ${EXPLORER}/address/${adapterAddr}`);
+  console.log(`  Agent:     ${EXPLORER}/address/${deployer.address}`);
+  console.log("\n  Update your .env file with the addresses above.");
+  console.log("  To deposit, you need real USDY/mETH/USDC on Mantle.");
   console.log("    Bridge from Ethereum via https://bridge.mantle.xyz");
 }
 

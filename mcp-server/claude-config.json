@@ -3,13 +3,13 @@
     "sentinel-treasury": {
       "command": "npx",
       "args": ["ts-node", "mcp-server/index.ts"],
-      "cwd": "/path/to/mantle",
+      "cwd": "/Users/MAC/Desktop/Hackathons/mantle",
       "env": {
         "MANTLE_MAINNET_RPC": "https://rpc.mantle.xyz",
         "VAULT_ADDRESS": "",
         "LOGGER_ADDRESS": "",
         "IDENTITY_ADDRESS": "",
-        "AGENT_WALLET_ADDRESS": "0x76f61EA62C5A8F0b38D820F66DAF546f7Fa6015c"
+        "AGENT_WALLET_ADDRESS": ""
       }
     }
   }

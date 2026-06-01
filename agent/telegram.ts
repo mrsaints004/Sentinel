@@ -65,21 +65,15 @@ export function startTelegramBot(token: string) {
     bot.sendMessage(
       chatId,
       `*Welcome to Sentinel* \u{1F3E6}\n\n` +
-        `Your Mantle Treasury AI.\n\n` +
-        `I continuously monitor yield opportunities, assess risk, and manage your portfolio \u2014 all on-chain.\n\n` +
-        `To link your wallet, click "Link Telegram" on the Sentinel dashboard.\n\n` +
-        `*Commands:*\n` +
-        `/portfolio \u2014 View your treasury\n` +
-        `/yields \u2014 Current yield rates\n` +
-        `/risk \u2014 Risk assessment\n` +
-        `/lastdecision \u2014 Last AI decision\n` +
-        `/agents \u2014 View agent status\n` +
-        `/autonomous \u2014 Autonomous mode settings\n` +
-        `/approve \u2014 Approve pending trade\n` +
-        `/reject \u2014 Reject pending trade\n` +
-        `/setrisk \u2014 Change risk profile\n` +
-        `/byreal \u2014 Cross-chain pool analysis\n` +
-        `/help \u2014 Show all commands`,
+        `Your AI treasury on Mantle.\n\n` +
+        `Deposit funds. Set your risk level. I handle the rest \u2014 monitoring yields, rebalancing your portfolio, and logging every decision on-chain.\n\n` +
+        `*Here's how to start:*\n` +
+        `1. /portfolio \u2014 Check your treasury\n` +
+        `2. /setrisk \u2014 Pick your risk level\n` +
+        `3. /yields \u2014 See live yield rates\n\n` +
+        `I'll notify you before any big moves. You can /approve or /reject anytime.\n\n` +
+        `_To link your wallet, click "Link Telegram" on the dashboard._\n` +
+        `_Type /help for all commands._`,
       { parse_mode: "Markdown" }
     );
   });
@@ -129,7 +123,7 @@ export function startTelegramBot(token: string) {
         `*Uptime:* ${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m\n` +
         `\n\u2501\u2501\u2501 *Allocation* \u2501\u2501\u2501${allocText}\n` +
         `*Network:* Mantle Mainnet (5000)\n` +
-        `*Agent:* ERC-8004 NFT #1`,
+        `*Agent:* Identity NFT #1`,
       { parse_mode: "Markdown" }
     );
   });
@@ -252,17 +246,17 @@ export function startTelegramBot(token: string) {
     const history = getDecisionHistory();
     const last = history[history.length - 1];
 
-    let text = `\u{1F9E0} *Multi-Agent System Status*\n\n`;
-    text += `*Market Intelligence Agent*\n`;
+    let text = `\u{1F9E0} *Agent Status*\n\n`;
+    text += `*Market Agent* \u2014 tracks prices\n`;
     text += `  Status: \u{1F7E2} Active\n`;
     text += `  Last: ${last?.market ? `${last.market.outlook} outlook, ${last.market.confidence}% confidence` : "Awaiting data"}\n\n`;
-    text += `*Yield Optimization Agent*\n`;
+    text += `*Yield Agent* \u2014 finds best APY\n`;
     text += `  Status: \u{1F7E2} Active\n`;
     text += `  Last: ${last?.yields ? `${last.yields.bestYieldAsset} leading at ${last.yields.bestYieldApy.toFixed(2)}% APY` : "Awaiting data"}\n\n`;
-    text += `*Risk Management Agent*\n`;
+    text += `*Risk Agent* \u2014 checks volatility\n`;
     text += `  Status: \u{1F7E2} Active\n`;
     text += `  Last: ${last?.risk ? `Score ${last.risk.riskScore.toFixed(1)}/10, ${last.risk.exposureWarnings.length} warnings` : "Awaiting data"}\n\n`;
-    text += `*Portfolio Manager Agent*\n`;
+    text += `*Portfolio Agent* \u2014 decides rebalances\n`;
     text += `  Status: \u{1F7E2} Active\n`;
     text += `  Decisions: ${stats.totalDecisions}\n`;
     text += `  ROI: ${(stats.cumulativeROIBps / 100).toFixed(2)}%\n\n`;
@@ -494,12 +488,12 @@ export function startTelegramBot(token: string) {
     const chatId = msg.chat.id;
     bot.sendMessage(
       chatId,
-      `*Sentinel Treasury AI \u2014 Commands*\n\n` +
+      `*Sentinel \u2014 All Commands*\n\n` +
         `\u{1F4CA} /portfolio \u2014 Treasury status & allocation\n` +
-        `\u{1F4C8} /yields \u2014 Current yield rates (live)\n` +
+        `\u{1F4C8} /yields \u2014 Live yield rates\n` +
         `\u{1F6E1} /risk \u2014 Risk assessment\n` +
         `\u{1F916} /lastdecision \u2014 Last AI decision\n` +
-        `\u{1F9E0} /agents \u2014 Multi-agent system status\n` +
+        `\u{1F9E0} /agents \u2014 Agent status\n` +
         `\u2699\uFE0F /setrisk \u2014 Change risk profile\n` +
         `\u26A1 /autonomous \u2014 Autonomous mode settings\n` +
         `\u2705 /approve \u2014 Approve pending trade\n` +
@@ -510,7 +504,7 @@ export function startTelegramBot(token: string) {
     );
   });
 
-  function handleApproval(chatId: number, approved: boolean) {
+  async function handleApproval(chatId: number, approved: boolean) {
     const pending = getPendingApproval();
     if (!pending) {
       bot.sendMessage(chatId, "No pending trade to " + (approved ? "approve" : "reject") + ".");
@@ -518,7 +512,8 @@ export function startTelegramBot(token: string) {
     }
 
     if (approved) {
-      const success = approveDecision();
+      bot.sendMessage(chatId, "Submitting trade to Mantle...");
+      const success = await approveDecision();
       if (success) {
         const stats = getAgentStats();
         bot.sendMessage(
@@ -530,7 +525,7 @@ export function startTelegramBot(token: string) {
           { parse_mode: "Markdown" }
         );
       } else {
-        bot.sendMessage(chatId, "Failed to approve trade.");
+        bot.sendMessage(chatId, "Failed to execute trade. Check agent logs for details.");
       }
     } else {
       rejectDecision();
@@ -573,12 +568,10 @@ export function notifyDecision(decision: {
     .map((a) => `${a.symbol}: ${(a.allocationBps / 100).toFixed(1)}%`)
     .join(" | ");
 
-  let text = `\u{1F4E2} *New AI Decision*\n\n`;
-  text += `*Action:* ${decision.action.toUpperCase()}\n`;
-  text += `*Confidence:* ${decision.confidence}%\n`;
-  text += `*Risk:* ${decision.riskLevel}\n`;
-  text += `*Allocation:* ${allocText}\n\n`;
-  text += `*Reasoning:* ${decision.reasoning}\n`;
+  let text = `\u{1F4E2} *Portfolio Update*\n\n`;
+  text += `${decision.reasoning}\n\n`;
+  text += `*New allocation:* ${allocText}\n`;
+  text += `Confidence: ${decision.confidence}% \u00B7 Risk: ${decision.riskLevel}\n`;
 
   if (txHash) {
     text += `\n\u{1F517} [View TX](https://mantlescan.xyz/tx/${txHash})`;
@@ -597,12 +590,11 @@ export function notifyApprovalNeeded(decision: {
     .map((a) => `${a.symbol}: ${(a.allocationBps / 100).toFixed(1)}%`)
     .join(" | ");
 
-  let text = `\u26A0\uFE0F *Approval Required*\n\n`;
-  text += `*Action:* ${decision.action.toUpperCase()}\n`;
-  text += `*Confidence:* ${decision.confidence}%\n`;
-  text += `*New Allocation:* ${allocText}\n\n`;
-  text += `*Reasoning:* ${decision.reasoning}\n\n`;
-  text += `Use /approve or /reject`;
+  let text = `\u26A0\uFE0F *Approval Needed*\n\n`;
+  text += `${decision.reasoning}\n\n`;
+  text += `*Proposed allocation:* ${allocText}\n`;
+  text += `Confidence: ${decision.confidence}%\n\n`;
+  text += `Reply /approve or /reject`;
 
   notifyAllLinkedUsers(text);
 }
