@@ -9,6 +9,41 @@ interface ReputationMetrics {
   totalGames: number;
 }
 
+interface DcaPlan {
+  id: string;
+  sourceAsset: string;
+  targetAsset: string;
+  amountBps: number;
+  intervalMs: number;
+  nextExecutionAt: number;
+  totalExecutions: number;
+  enabled: boolean;
+  createdAt: number;
+}
+
+interface ScheduledTask {
+  id: string;
+  name: string;
+  type: "recurring_rebalance" | "conditional" | "one_time";
+  schedule: {
+    intervalMs?: number;
+    dayOfWeek?: number;
+    hourUTC?: number;
+  };
+  condition?: {
+    asset: string;
+    operator: "above" | "below";
+    priceUSD: number;
+  };
+  action: {
+    type: "rebalance" | "shift_to_stable" | "increase_asset";
+  };
+  enabled: boolean;
+  lastExecutedAt: number | null;
+  totalExecutions: number;
+  createdAt: number;
+}
+
 interface AgentInfo {
   agentName: string;
   strategyType: string;
@@ -19,6 +54,8 @@ interface AgentInfo {
   walletAddress: string;
   lastActive: string;
   reputation?: ReputationMetrics;
+  dcaPlans?: DcaPlan[];
+  scheduledTasks?: ScheduledTask[];
 }
 
 function formatUptime(seconds: number): string {
@@ -41,6 +78,25 @@ function getScoreColor(score: number): string {
   if (score >= 400) return "text-yellow-400";
   return "text-s-red";
 }
+
+function formatInterval(ms: number): string {
+  const hours = ms / 3600000;
+  if (hours < 1) return `${Math.round(ms / 60000)}m`;
+  if (hours < 24) return `${hours}h`;
+  return `${Math.round(hours / 24)}d`;
+}
+
+function formatTimeUntil(timestamp: number): string {
+  const diff = timestamp - Date.now();
+  if (diff <= 0) return "now";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ${mins % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function AgentStatus({ agent }: { agent: AgentInfo }) {
   const roi = (agent.cumulativeROIBps / 100).toFixed(2);
@@ -127,6 +183,84 @@ export default function AgentStatus({ agent }: { agent: AgentInfo }) {
           </div>
           <div className="mt-2 text-[10px] text-s-text-muted text-center">
             Verified on-chain ({rep.totalGames} decisions tracked)
+          </div>
+        </div>
+      )}
+
+      {/* DCA Plans Section */}
+      {agent.dcaPlans && agent.dcaPlans.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold text-s-text-muted uppercase tracking-wider mb-3">
+            DCA Plans ({agent.dcaPlans.length})
+          </h3>
+          <div className="space-y-2">
+            {agent.dcaPlans.map((plan) => (
+              <div
+                key={plan.id}
+                className="flex items-center justify-between p-3 rounded-xl bg-s-bg border border-s-border"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${plan.enabled ? "bg-s-green" : "bg-gray-400"}`} />
+                  <div>
+                    <div className="text-sm font-semibold text-s-text">
+                      {plan.sourceAsset} → {plan.targetAsset}
+                    </div>
+                    <div className="text-[11px] text-s-text-muted">
+                      {plan.amountBps / 100}% every {formatInterval(plan.intervalMs)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-s-accent">
+                    #{plan.totalExecutions}
+                  </div>
+                  <div className="text-[10px] text-s-text-muted">
+                    {plan.enabled ? `Next: ${formatTimeUntil(plan.nextExecutionAt)}` : "Paused"}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Scheduled Tasks Section */}
+      {agent.scheduledTasks && agent.scheduledTasks.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-xs font-semibold text-s-text-muted uppercase tracking-wider mb-3">
+            Scheduled Tasks ({agent.scheduledTasks.length})
+          </h3>
+          <div className="space-y-2">
+            {agent.scheduledTasks.map((task) => (
+              <div
+                key={task.id}
+                className="flex items-center justify-between p-3 rounded-xl bg-s-bg border border-s-border"
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${task.enabled ? "bg-s-green" : "bg-gray-400"}`} />
+                  <div>
+                    <div className="text-sm font-semibold text-s-text">
+                      {task.name}
+                    </div>
+                    <div className="text-[11px] text-s-text-muted">
+                      {task.type.replace("_", " ")}
+                      {task.schedule.dayOfWeek !== undefined && ` | ${DAY_NAMES[task.schedule.dayOfWeek]} ${task.schedule.hourUTC ?? 0}:00 UTC`}
+                      {task.condition && ` | ${task.condition.asset} ${task.condition.operator} $${task.condition.priceUSD.toLocaleString()}`}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-bold text-s-accent">
+                    #{task.totalExecutions}
+                  </div>
+                  <div className="text-[10px] text-s-text-muted">
+                    {task.lastExecutedAt
+                      ? `Last: ${Math.floor((Date.now() - task.lastExecutedAt) / 60000)}m ago`
+                      : "Never run"}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

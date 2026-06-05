@@ -5,7 +5,7 @@ const LOG_PATH = path.join(__dirname, "..", ".activity-log.json");
 
 export interface ActivityEntry {
   id: number;
-  type: "decision" | "approval" | "rejection" | "link" | "mcp";
+  type: "decision" | "approval" | "rejection" | "link" | "mcp" | "dca" | "scheduled";
   action: string;
   reasoning: string;
   confidence?: number;

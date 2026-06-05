@@ -479,4 +479,86 @@ export class Executor {
   getSubAgentAddresses(): string[] {
     return this.subAgentWallets.map((w) => w.address);
   }
+
+  /**
+   * Execute a single DCA swap: sell `amountBps` of sourceAsset for targetAsset.
+   */
+  async executeDcaSwap(
+    sourceAsset: string,
+    targetAsset: string,
+    amountBps: number
+  ): Promise<string | null> {
+    try {
+      const { assets, balances, names } = await this.getCurrentAllocations();
+      if (assets.length === 0) {
+        console.error("[DCA] No portfolio assets found");
+        return null;
+      }
+
+      // Find source asset index
+      const sourceIdx = names.findIndex(
+        (n: string) => n.toUpperCase() === sourceAsset.toUpperCase()
+      );
+      if (sourceIdx === -1) {
+        console.error(`[DCA] Source asset ${sourceAsset} not found in portfolio`);
+        return null;
+      }
+
+      const sourceBalance = balances[sourceIdx];
+      const swapAmount = (sourceBalance * BigInt(amountBps)) / 10000n;
+      if (swapAmount === 0n) {
+        console.log("[DCA] Swap amount is 0, skipping");
+        return null;
+      }
+
+      // Find target asset index
+      const targetIdx = names.findIndex(
+        (n: string) => n.toUpperCase() === targetAsset.toUpperCase()
+      );
+      if (targetIdx === -1) {
+        console.error(`[DCA] Target asset ${targetAsset} not found in portfolio`);
+        return null;
+      }
+
+      const routerAddr = await this.vault.swapRouter().catch(() => ethers.ZeroAddress);
+      if (routerAddr === ethers.ZeroAddress) {
+        console.log("[DCA] No swap router available, skipping DCA swap");
+        return null;
+      }
+
+      // Get quote for slippage protection
+      const swapRouter = new ethers.Contract(routerAddr, SWAP_ROUTER_ABI, this.provider);
+      let minOut = (swapAmount * 98n) / 100n; // default 2% slippage
+      try {
+        const quote = await swapRouter.getAmountOut(
+          assets[sourceIdx],
+          assets[targetIdx],
+          swapAmount
+        );
+        minOut = (quote * 98n) / 100n;
+      } catch {}
+
+      // Pass current on-chain allocations to preserve them — only the swap changes balances
+      const { allocations: currentOnChainAlloc } = await this.getCurrentAllocations();
+      const currentAllocBps = currentOnChainAlloc.map((a) => Number(a));
+      console.log(
+        `[DCA] Swapping ${amountBps / 100}% of ${sourceAsset} -> ${targetAsset}`
+      );
+
+      const tx = await this.vault.rebalanceWithSwap(
+        assets,
+        currentAllocBps, // preserve current allocations
+        [assets[sourceIdx]],
+        [assets[targetIdx]],
+        [swapAmount],
+        [minOut]
+      );
+      const receipt = await tx.wait();
+      console.log(`[DCA] Swap tx confirmed: ${receipt.hash}`);
+      return receipt.hash;
+    } catch (error) {
+      console.error("[DCA] Swap failed:", error);
+      return null;
+    }
+  }
 }

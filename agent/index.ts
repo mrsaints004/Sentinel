@@ -20,8 +20,33 @@ import {
   AutonomousRules,
 } from "./autonomousRules";
 import { getCrossChainOpportunities } from "./skills/byrealSkill";
-import { notifyDecision, notifyApprovalNeeded } from "./telegram";
+import { notifyDecision, notifyApprovalNeeded, notifyAllLinkedUsers } from "./telegram";
 import { logActivity } from "./activityLog";
+import {
+  getReadyPlans,
+  markExecuted,
+  getPlans as getDcaPlans,
+  createPlan as createDcaPlan,
+  removePlan as removeDcaPlan,
+  pausePlan as pauseDcaPlan,
+  resumePlan as resumeDcaPlan,
+  formatInterval,
+  DcaPlan,
+} from "./dcaManager";
+import {
+  getReadyTasks,
+  markTaskExecuted,
+  getTasks as getScheduledTasks,
+  createTask as createScheduledTask,
+  removeTask as removeScheduledTask,
+  pauseTask as pauseScheduledTask,
+  resumeTask as resumeScheduledTask,
+  createWeeklyRebalance,
+  createSafetyShift,
+  createYieldChase,
+  ScheduledTask,
+  MarketSnapshot as SchedulerMarketSnapshot,
+} from "./scheduler";
 
 // --- Multi-Agent System ---
 const marketAgent = new MarketIntelligenceAgent();
@@ -315,6 +340,114 @@ function computeRiskVote(risk: RiskAnalysis): number[] {
   return [3000, 4000, 3000];
 }
 
+// --- DCA Execution ---
+async function checkAndExecuteDca(executor: Executor): Promise<void> {
+  const ready = getReadyPlans();
+  if (ready.length === 0) return;
+
+  console.log(`\n[DCA] ${ready.length} plan(s) ready for execution`);
+
+  for (const plan of ready) {
+    try {
+      console.log(`[DCA] Executing: ${plan.sourceAsset} -> ${plan.targetAsset} (${plan.amountBps / 100}%)`);
+      const txHash = await executor.executeDcaSwap(plan.sourceAsset, plan.targetAsset, plan.amountBps);
+
+      if (!txHash) {
+        console.warn(`[DCA] Plan ${plan.id} swap returned null — skipping, will retry next interval`);
+        continue;
+      }
+
+      markExecuted(plan.id);
+
+      logActivity({
+        type: "dca",
+        action: `DCA ${plan.sourceAsset} -> ${plan.targetAsset}`,
+        reasoning: `Scheduled DCA: ${plan.amountBps / 100}% of ${plan.sourceAsset} swapped to ${plan.targetAsset} (execution #${plan.totalExecutions + 1})`,
+        source: "agent",
+        txHash,
+      });
+
+      const msg = `*DCA Executed* \u{1F504}\n\n${plan.sourceAsset} \u2192 ${plan.targetAsset} (${plan.amountBps / 100}%)\nExecution #${plan.totalExecutions + 1}`;
+      notifyAllLinkedUsers(`${msg}\n\n[View TX](https://mantlescan.xyz/tx/${txHash})`);
+    } catch (error) {
+      console.error(`[DCA] Plan ${plan.id} failed:`, error);
+    }
+  }
+}
+
+// --- Scheduled Task Execution ---
+async function checkAndExecuteScheduledTasks(
+  executor: Executor,
+  snapshot: { prices: { [symbol: string]: number } }
+): Promise<void> {
+  const schedulerSnapshot: SchedulerMarketSnapshot = { prices: snapshot.prices };
+  const ready = getReadyTasks(schedulerSnapshot);
+  if (ready.length === 0) return;
+
+  console.log(`\n[Scheduler] ${ready.length} task(s) ready for execution`);
+
+  for (const task of ready) {
+    try {
+      console.log(`[Scheduler] Executing: ${task.name} (${task.type})`);
+      let txHash: string | null = null;
+
+      let executed = false;
+
+      if (task.action.targetAllocations) {
+        // Execute allocation shift
+        const decision = {
+          action: "rebalance" as const,
+          reasoning: `Scheduled task: ${task.name}`,
+          riskLevel: "medium",
+          confidence: 80,
+          newAllocations: task.action.targetAllocations.map((a) => ({
+            asset: config.assets[a.symbol as keyof typeof config.assets] || "",
+            symbol: a.symbol,
+            allocationBps: a.allocationBps,
+          })),
+          agentContributions: {
+            market: "N/A (scheduled)",
+            yield: "N/A (scheduled)",
+            risk: "N/A (scheduled)",
+          },
+        };
+        txHash = await executor.executeRebalance(decision);
+        if (txHash) {
+          currentAllocations = task.action.targetAllocations.map((a) => ({
+            symbol: a.symbol,
+            allocationBps: a.allocationBps,
+          }));
+          executed = true;
+        } else {
+          console.warn(`[Scheduler] Task ${task.name} rebalance returned null — will retry`);
+        }
+      } else if (task.action.type === "rebalance") {
+        // Force a regular AI rebalance cycle
+        console.log("[Scheduler] Triggering forced rebalance cycle...");
+        await runCycle(executor);
+        executed = true;
+      }
+
+      if (!executed) continue;
+
+      markTaskExecuted(task.id);
+
+      logActivity({
+        type: "scheduled",
+        action: `Scheduled: ${task.name}`,
+        reasoning: `${task.type} task executed — ${task.name} (execution #${task.totalExecutions + 1})`,
+        source: "agent",
+        txHash,
+      });
+
+      const msg = `*Scheduled Task Executed* \u{1F4C5}\n\n*${task.name}*\nType: ${task.type}\nExecution #${task.totalExecutions + 1}`;
+      notifyAllLinkedUsers(txHash ? `${msg}\n\n[View TX](https://mantlescan.xyz/tx/${txHash})` : msg);
+    } catch (error) {
+      console.error(`[Scheduler] Task ${task.id} failed:`, error);
+    }
+  }
+}
+
 async function main(): Promise<void> {
   console.log("╔════════════════════════════════════════════════════════╗");
   console.log("║        Sentinel — AI Treasury on Mantle               ║");
@@ -346,7 +479,19 @@ async function main(): Promise<void> {
 
   setInterval(async () => {
     try {
-      await runCycle(executor);
+      // Check DCA plans before each cycle
+      await checkAndExecuteDca(executor);
+
+      const result = await runCycle(executor);
+
+      // Check scheduled tasks after cycle (uses fresh snapshot prices)
+      const prices: { [symbol: string]: number } = {};
+      if (result?.snapshot?.prices) {
+        for (const p of result.snapshot.prices) {
+          prices[p.asset] = p.priceUSD;
+        }
+      }
+      await checkAndExecuteScheduledTasks(executor, { prices });
     } catch (error) {
       console.error("Cycle failed:", error);
     }
@@ -439,5 +584,29 @@ export function getAutonomousStatus() {
     formattedRules: formatRules(),
   };
 }
+
+// --- DCA Exports ---
+export {
+  getDcaPlans,
+  createDcaPlan,
+  removeDcaPlan,
+  pauseDcaPlan,
+  resumeDcaPlan,
+  formatInterval,
+};
+export type { DcaPlan };
+
+// --- Scheduler Exports ---
+export {
+  getScheduledTasks,
+  createScheduledTask,
+  removeScheduledTask,
+  pauseScheduledTask,
+  resumeScheduledTask,
+  createWeeklyRebalance,
+  createSafetyShift,
+  createYieldChase,
+};
+export type { ScheduledTask };
 
 main().catch(console.error);
