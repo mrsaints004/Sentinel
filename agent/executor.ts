@@ -46,6 +46,13 @@ const CONSENSUS_ABI = [
   "function roundCount() external view returns (uint256)",
 ];
 
+export interface ExecutorOpts {
+  vaultAddress: string;
+  loggerAddress: string;
+  provider?: ethers.JsonRpcProvider;
+  wallet?: ethers.Wallet;
+}
+
 export class Executor {
   private provider: ethers.JsonRpcProvider;
   private wallet: ethers.Wallet;
@@ -57,11 +64,15 @@ export class Executor {
   // Sub-agent wallets derived from main key for consensus voting
   private subAgentWallets: ethers.Wallet[];
 
-  constructor() {
-    this.provider = new ethers.JsonRpcProvider(config.mantleRpc);
-    this.wallet = new ethers.Wallet(config.privateKey, this.provider);
-    this.vault = new ethers.Contract(config.vaultAddress, VAULT_ABI, this.wallet);
-    this.logger = new ethers.Contract(config.loggerAddress, LOGGER_ABI, this.wallet);
+  constructor(opts?: ExecutorOpts) {
+    this.provider = opts?.provider || new ethers.JsonRpcProvider(config.mantleRpc);
+    this.wallet = opts?.wallet || new ethers.Wallet(config.privateKey, this.provider);
+
+    const vaultAddr = opts?.vaultAddress || config.vaultAddress;
+    const loggerAddr = opts?.loggerAddress || config.loggerAddress;
+
+    this.vault = new ethers.Contract(vaultAddr, VAULT_ABI, this.wallet);
+    this.logger = new ethers.Contract(loggerAddr, LOGGER_ABI, this.wallet);
     this.identity = new ethers.Contract(config.identityAddress, IDENTITY_ABI, this.wallet);
 
     // Initialize consensus contract if address configured
@@ -72,6 +83,15 @@ export class Executor {
 
     // Derive 4 sub-agent wallets using HD paths for consensus voting
     this.subAgentWallets = this.deriveSubAgentWallets();
+  }
+
+  /**
+   * Factory method: create an executor for a specific user's vault/logger.
+   */
+  static createForUser(vaultAddress: string, loggerAddress: string): Executor {
+    const provider = new ethers.JsonRpcProvider(config.mantleRpc);
+    const wallet = new ethers.Wallet(config.privateKey, provider);
+    return new Executor({ vaultAddress, loggerAddress, provider, wallet });
   }
 
   private deriveSubAgentWallets(): ethers.Wallet[] {

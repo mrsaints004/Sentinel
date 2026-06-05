@@ -1,7 +1,6 @@
-import * as fs from "fs";
-import * as path from "path";
+import { loadUserFileSync, saveUserFileSync } from "./userStore";
 
-const TASKS_PATH = path.join(__dirname, "..", ".scheduled-tasks.json");
+const TASKS_FILE = "scheduled-tasks.json";
 
 export interface ScheduledTask {
   id: string;
@@ -27,26 +26,16 @@ export interface ScheduledTask {
   createdAt: number;
 }
 
-function loadTasks(): ScheduledTask[] {
-  try {
-    if (fs.existsSync(TASKS_PATH)) {
-      return JSON.parse(fs.readFileSync(TASKS_PATH, "utf-8"));
-    }
-  } catch {}
-  return [];
+function loadTasks(wallet: string): ScheduledTask[] {
+  return loadUserFileSync<ScheduledTask[]>(wallet, TASKS_FILE, []);
 }
 
-function persistTasks(tasks: ScheduledTask[]): void {
-  try {
-    fs.writeFileSync(TASKS_PATH, JSON.stringify(tasks, null, 2));
-  } catch (err) {
-    console.warn("[Scheduler] Failed to persist tasks:", (err as Error).message);
-  }
+function persistTasks(wallet: string, tasks: ScheduledTask[]): void {
+  saveUserFileSync(wallet, TASKS_FILE, tasks);
 }
 
-let tasks: ScheduledTask[] = loadTasks();
-
-export function createTask(task: Omit<ScheduledTask, "id" | "lastExecutedAt" | "totalExecutions" | "createdAt">): ScheduledTask {
+export function createTask(wallet: string, task: Omit<ScheduledTask, "id" | "lastExecutedAt" | "totalExecutions" | "createdAt">): ScheduledTask {
+  const tasks = loadTasks(wallet);
   const newTask: ScheduledTask = {
     ...task,
     id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -55,69 +44,70 @@ export function createTask(task: Omit<ScheduledTask, "id" | "lastExecutedAt" | "
     createdAt: Date.now(),
   };
   tasks.push(newTask);
-  persistTasks(tasks);
+  persistTasks(wallet, tasks);
   return newTask;
 }
 
-export function removeTask(id: string): boolean {
+export function removeTask(wallet: string, id: string): boolean {
+  const tasks = loadTasks(wallet);
   const idx = tasks.findIndex((t) => t.id === id);
   if (idx === -1) return false;
   tasks.splice(idx, 1);
-  persistTasks(tasks);
+  persistTasks(wallet, tasks);
   return true;
 }
 
-export function getTasks(): ScheduledTask[] {
-  return tasks.map((t) => ({ ...t }));
+export function getTasks(wallet: string): ScheduledTask[] {
+  return loadTasks(wallet).map((t) => ({ ...t }));
 }
 
-export function pauseTask(id: string): boolean {
+export function pauseTask(wallet: string, id: string): boolean {
+  const tasks = loadTasks(wallet);
   const task = tasks.find((t) => t.id === id);
   if (!task) return false;
   task.enabled = false;
-  persistTasks(tasks);
+  persistTasks(wallet, tasks);
   return true;
 }
 
-export function resumeTask(id: string): boolean {
+export function resumeTask(wallet: string, id: string): boolean {
+  const tasks = loadTasks(wallet);
   const task = tasks.find((t) => t.id === id);
   if (!task) return false;
   task.enabled = true;
-  persistTasks(tasks);
+  persistTasks(wallet, tasks);
   return true;
 }
 
-export function markTaskExecuted(id: string): void {
+export function markTaskExecuted(wallet: string, id: string): void {
+  const tasks = loadTasks(wallet);
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
   task.totalExecutions++;
   task.lastExecutedAt = Date.now();
-  // Disable one-time tasks after execution
   if (task.type === "one_time") {
     task.enabled = false;
   }
-  persistTasks(tasks);
+  persistTasks(wallet, tasks);
 }
 
 export interface MarketSnapshot {
   prices: { [symbol: string]: number };
 }
 
-export function getReadyTasks(snapshot: MarketSnapshot): ScheduledTask[] {
+export function getReadyTasks(wallet: string, snapshot: MarketSnapshot): ScheduledTask[] {
   const now = new Date();
+  const tasks = loadTasks(wallet);
   return tasks.filter((task) => {
     if (!task.enabled) return false;
 
-    // Check schedule timing
     if (task.type === "recurring_rebalance") {
       const { schedule, lastExecutedAt } = task;
 
-      // Day-of-week + hour based schedule (e.g. every Sunday at 00:00 UTC)
       if (schedule.dayOfWeek !== undefined && schedule.hourUTC !== undefined) {
         const currentDay = now.getUTCDay();
         const currentHour = now.getUTCHours();
         if (currentDay !== schedule.dayOfWeek || currentHour !== schedule.hourUTC) return false;
-        // Don't re-execute within the same hour
         if (lastExecutedAt) {
           const lastExec = new Date(lastExecutedAt);
           if (
@@ -129,18 +119,14 @@ export function getReadyTasks(snapshot: MarketSnapshot): ScheduledTask[] {
         return true;
       }
 
-      // Interval-based schedule
       if (schedule.intervalMs) {
         if (!lastExecutedAt) return true;
         return now.getTime() - lastExecutedAt >= schedule.intervalMs;
       }
     }
 
-    // Conditional tasks: check price condition with cooldown
     if (task.type === "conditional" && task.condition) {
-      // Cooldown: don't re-trigger within 1 hour of last execution
       if (task.lastExecutedAt && now.getTime() - task.lastExecutedAt < 3600000) return false;
-
       const price = snapshot.prices[task.condition.asset];
       if (price === undefined) return false;
       if (task.condition.operator === "below" && price < task.condition.priceUSD) return true;
@@ -148,7 +134,6 @@ export function getReadyTasks(snapshot: MarketSnapshot): ScheduledTask[] {
       return false;
     }
 
-    // One-time tasks: execute immediately if never executed
     if (task.type === "one_time") {
       return task.lastExecutedAt === null;
     }
@@ -159,15 +144,16 @@ export function getReadyTasks(snapshot: MarketSnapshot): ScheduledTask[] {
 
 // --- Pre-built Templates ---
 
-function hasDuplicateTask(name: string): boolean {
+function hasDuplicateTask(wallet: string, name: string): boolean {
+  const tasks = loadTasks(wallet);
   return tasks.some((t) => t.name === name && t.enabled);
 }
 
-export function createWeeklyRebalance(): ScheduledTask {
-  if (hasDuplicateTask("Weekly Rebalance")) {
+export function createWeeklyRebalance(wallet: string): ScheduledTask {
+  if (hasDuplicateTask(wallet, "Weekly Rebalance")) {
     throw new Error("A Weekly Rebalance task already exists");
   }
-  return createTask({
+  return createTask(wallet, {
     name: "Weekly Rebalance",
     type: "recurring_rebalance",
     schedule: { dayOfWeek: 0, hourUTC: 0 },
@@ -176,12 +162,12 @@ export function createWeeklyRebalance(): ScheduledTask {
   });
 }
 
-export function createSafetyShift(priceUSD: number): ScheduledTask {
+export function createSafetyShift(wallet: string, priceUSD: number): ScheduledTask {
   if (priceUSD <= 0) throw new Error("Safety Shift requires a positive price threshold");
-  if (hasDuplicateTask("Safety Shift")) {
+  if (hasDuplicateTask(wallet, "Safety Shift")) {
     throw new Error("A Safety Shift task already exists — remove the old one first");
   }
-  return createTask({
+  return createTask(wallet, {
     name: "Safety Shift",
     type: "conditional",
     schedule: {},
@@ -198,12 +184,12 @@ export function createSafetyShift(priceUSD: number): ScheduledTask {
   });
 }
 
-export function createYieldChase(mETHPriceAbove: number): ScheduledTask {
+export function createYieldChase(wallet: string, mETHPriceAbove: number): ScheduledTask {
   if (mETHPriceAbove <= 0) throw new Error("Yield Chase requires a positive price threshold");
-  if (hasDuplicateTask("Yield Chase")) {
+  if (hasDuplicateTask(wallet, "Yield Chase")) {
     throw new Error("A Yield Chase task already exists — remove the old one first");
   }
-  return createTask({
+  return createTask(wallet, {
     name: "Yield Chase",
     type: "conditional",
     schedule: {},

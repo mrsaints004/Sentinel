@@ -1,7 +1,6 @@
-import * as fs from "fs";
-import * as path from "path";
+import { loadUserFileSync, saveUserFileSync } from "./userStore";
 
-const PLANS_PATH = path.join(__dirname, "..", ".dca-plans.json");
+const DCA_FILE = "dca-plans.json";
 
 export interface DcaPlan {
   id: string;
@@ -15,31 +14,21 @@ export interface DcaPlan {
   createdAt: number;
 }
 
-function loadPlans(): DcaPlan[] {
-  try {
-    if (fs.existsSync(PLANS_PATH)) {
-      return JSON.parse(fs.readFileSync(PLANS_PATH, "utf-8"));
-    }
-  } catch {}
-  return [];
+function loadPlans(wallet: string): DcaPlan[] {
+  return loadUserFileSync<DcaPlan[]>(wallet, DCA_FILE, []);
 }
 
-function persistPlans(plans: DcaPlan[]): void {
-  try {
-    fs.writeFileSync(PLANS_PATH, JSON.stringify(plans, null, 2));
-  } catch (err) {
-    console.warn("[DCA] Failed to persist plans:", (err as Error).message);
-  }
+function persistPlans(wallet: string, plans: DcaPlan[]): void {
+  saveUserFileSync(wallet, DCA_FILE, plans);
 }
 
-let plans: DcaPlan[] = loadPlans();
-
-export function createPlan(opts: {
+export function createPlan(wallet: string, opts: {
   sourceAsset: string;
   targetAsset: string;
   amountBps: number;
   intervalMs: number;
 }): DcaPlan {
+  const plans = loadPlans(wallet);
   const plan: DcaPlan = {
     id: `dca_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     sourceAsset: opts.sourceAsset,
@@ -52,50 +41,54 @@ export function createPlan(opts: {
     createdAt: Date.now(),
   };
   plans.push(plan);
-  persistPlans(plans);
+  persistPlans(wallet, plans);
   return plan;
 }
 
-export function removePlan(id: string): boolean {
+export function removePlan(wallet: string, id: string): boolean {
+  const plans = loadPlans(wallet);
   const idx = plans.findIndex((p) => p.id === id);
   if (idx === -1) return false;
   plans.splice(idx, 1);
-  persistPlans(plans);
+  persistPlans(wallet, plans);
   return true;
 }
 
-export function getPlans(): DcaPlan[] {
-  return plans.map((p) => ({ ...p }));
+export function getPlans(wallet: string): DcaPlan[] {
+  return loadPlans(wallet).map((p) => ({ ...p }));
 }
 
-export function pausePlan(id: string): boolean {
+export function pausePlan(wallet: string, id: string): boolean {
+  const plans = loadPlans(wallet);
   const plan = plans.find((p) => p.id === id);
   if (!plan) return false;
   plan.enabled = false;
-  persistPlans(plans);
+  persistPlans(wallet, plans);
   return true;
 }
 
-export function resumePlan(id: string): boolean {
+export function resumePlan(wallet: string, id: string): boolean {
+  const plans = loadPlans(wallet);
   const plan = plans.find((p) => p.id === id);
   if (!plan) return false;
   plan.enabled = true;
   plan.nextExecutionAt = Date.now() + plan.intervalMs;
-  persistPlans(plans);
+  persistPlans(wallet, plans);
   return true;
 }
 
-export function getReadyPlans(): DcaPlan[] {
+export function getReadyPlans(wallet: string): DcaPlan[] {
   const now = Date.now();
-  return plans.filter((p) => p.enabled && now >= p.nextExecutionAt);
+  return loadPlans(wallet).filter((p) => p.enabled && now >= p.nextExecutionAt);
 }
 
-export function markExecuted(id: string): void {
+export function markExecuted(wallet: string, id: string): void {
+  const plans = loadPlans(wallet);
   const plan = plans.find((p) => p.id === id);
   if (!plan) return;
   plan.totalExecutions++;
   plan.nextExecutionAt = Date.now() + plan.intervalMs;
-  persistPlans(plans);
+  persistPlans(wallet, plans);
 }
 
 export function formatInterval(ms: number): string {

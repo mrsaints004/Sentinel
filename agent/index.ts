@@ -1,612 +1,176 @@
 import { config } from "./config";
-import { getMarketSnapshot, MarketSnapshot } from "./dataFeeds";
-import { Executor } from "./executor";
-import { MarketIntelligenceAgent, MarketOutlook } from "./agents/marketIntelligence";
-import { YieldOptimizationAgent, YieldAnalysis } from "./agents/yieldOptimization";
-import { RiskManagementAgent, RiskAnalysis } from "./agents/riskManagement";
+import { AgentManager, CycleResult } from "./agentManager";
+import { PortfolioDecision, RiskProfile } from "./agents/portfolioManager";
+import { AutonomousRules } from "./autonomousRules";
 import {
-  PortfolioManagerAgent,
-  PortfolioDecision,
-  RiskProfile,
-} from "./agents/portfolioManager";
-import { calculateBlendedYield } from "./strategies/yieldOptimizer";
-import {
-  checkTrade,
-  getRules,
-  setRules,
-  enableAutonomous,
-  formatRules,
-  getTradesToday,
-  AutonomousRules,
-} from "./autonomousRules";
-import { getCrossChainOpportunities } from "./skills/byrealSkill";
-import { notifyDecision, notifyApprovalNeeded, notifyAllLinkedUsers } from "./telegram";
-import { logActivity } from "./activityLog";
-import {
-  getReadyPlans,
-  markExecuted,
-  getPlans as getDcaPlans,
-  createPlan as createDcaPlan,
-  removePlan as removeDcaPlan,
-  pausePlan as pauseDcaPlan,
-  resumePlan as resumeDcaPlan,
+  getPlans as getDcaPlansForUser,
+  createPlan as createDcaPlanForUser,
+  removePlan as removeDcaPlanForUser,
+  pausePlan as pauseDcaPlanForUser,
+  resumePlan as resumeDcaPlanForUser,
   formatInterval,
   DcaPlan,
 } from "./dcaManager";
 import {
-  getReadyTasks,
-  markTaskExecuted,
-  getTasks as getScheduledTasks,
-  createTask as createScheduledTask,
-  removeTask as removeScheduledTask,
-  pauseTask as pauseScheduledTask,
-  resumeTask as resumeScheduledTask,
-  createWeeklyRebalance,
-  createSafetyShift,
-  createYieldChase,
+  getTasks as getScheduledTasksForUser,
+  createTask as createScheduledTaskForUser,
+  removeTask as removeScheduledTaskForUser,
+  pauseTask as pauseScheduledTaskForUser,
+  resumeTask as resumeScheduledTaskForUser,
+  createWeeklyRebalance as createWeeklyRebalanceForUser,
+  createSafetyShift as createSafetyShiftForUser,
+  createYieldChase as createYieldChaseForUser,
   ScheduledTask,
-  MarketSnapshot as SchedulerMarketSnapshot,
 } from "./scheduler";
 
-// --- Multi-Agent System ---
-const marketAgent = new MarketIntelligenceAgent();
-const yieldAgent = new YieldOptimizationAgent();
-const riskAgent = new RiskManagementAgent();
-const portfolioAgent = new PortfolioManagerAgent("moderate");
+// --- Global AgentManager Instance ---
+let manager: AgentManager | null = null;
 
-// --- State ---
-let currentAllocations = [
-  { symbol: "USDY", allocationBps: 3333 },
-  { symbol: "mETH", allocationBps: 3334 },
-  { symbol: "USDC", allocationBps: 3333 },
-];
-
-let totalDecisions = 0;
-let cumulativeROIBps = 0;
-let pendingApproval: PortfolioDecision | null = null;
-
-// Global executor reference — set once at startup, required for all operations
-let globalExecutor: Executor | null = null;
-
-interface CycleResult {
-  snapshot: MarketSnapshot;
-  market: MarketOutlook;
-  yields: YieldAnalysis;
-  risk: RiskAnalysis;
-  decision: PortfolioDecision;
-  txHash: string | null;
-  timestamp: number;
+export function getManager(): AgentManager | null {
+  return manager;
 }
 
-const cycleHistory: CycleResult[] = [];
-const MAX_CYCLE_HISTORY = 50;
-let cycleRunning = false;
+// --- Wallet-scoped exports for API / Telegram ---
 
-// --- Main Cycle ---
-async function runCycle(executor: Executor): Promise<CycleResult> {
-  if (cycleRunning) {
-    console.warn("[Sentinel] Cycle already in progress — skipping overlap");
-    return cycleHistory[cycleHistory.length - 1];
-  }
-  cycleRunning = true;
-  try {
-    return await _runCycleInner(executor);
-  } finally {
-    cycleRunning = false;
-  }
+export function getDecisionHistory(wallet: string): CycleResult[] {
+  return manager?.getDecisionHistory(wallet) || [];
 }
 
-async function _runCycleInner(executor: Executor): Promise<CycleResult> {
-  const cycleNum = totalDecisions + 1;
-  console.log("\n" + "=".repeat(60));
-  console.log(`[Sentinel] Cycle ${cycleNum} — ${new Date().toISOString()}`);
-  console.log("=".repeat(60));
+export function getCurrentAllocations(wallet: string): { symbol: string; allocationBps: number }[] {
+  return manager?.getCurrentAllocations(wallet) || [
+    { symbol: "USDY", allocationBps: 3333 },
+    { symbol: "mETH", allocationBps: 3334 },
+    { symbol: "USDC", allocationBps: 3333 },
+  ];
+}
 
-  // 1. Collect market data
-  console.log("\n[1/5] Fetching market data...");
-  const snapshot = await getMarketSnapshot();
-  snapshot.yields.forEach((y) =>
-    console.log(`  ${y.symbol}: ${y.apy.toFixed(2)}% APY (${y.source})`)
-  );
-
-  // 2. Market Intelligence Agent
-  console.log("\n[2/5] Market Intelligence Agent analyzing...");
-  const market = await marketAgent.analyze(snapshot.prices);
-  console.log(`  Outlook: ${market.outlook} (confidence: ${market.confidence}%)`);
-  console.log(`  ETH Momentum: ${market.ethMomentum}/100`);
-  console.log(`  Volatility: ${market.volatility}`);
-  market.signals.forEach((s) => console.log(`  Signal: ${s}`));
-
-  // 3. Yield Optimization Agent
-  console.log("\n[3/5] Yield Optimization Agent analyzing...");
-  const yields = await yieldAgent.analyze(snapshot.yields);
-  console.log(`  Best yield: ${yields.bestYieldAsset} at ${yields.bestYieldApy.toFixed(2)}% APY`);
-  console.log(`  Yield spread: ${yields.yieldSpread.toFixed(2)}%`);
-  yields.rankings.forEach((r) =>
-    console.log(`  ${r.asset}: ${r.apy.toFixed(2)}% (efficiency: ${r.capitalEfficiency}/100)`)
-  );
-
-  // 4. Risk Management Agent
-  console.log("\n[4/5] Risk Management Agent analyzing...");
-  const risk = await riskAgent.analyze(snapshot.prices, snapshot.risk, currentAllocations);
-  console.log(`  Risk Score: ${risk.riskScore}/10`);
-  console.log(`  Max Drawdown Est: ${risk.maxDrawdownEstimate}%`);
-  console.log(`  ${risk.recommendation}`);
-  risk.exposureWarnings.forEach((w) =>
-    console.log(`  [${w.severity.toUpperCase()}] ${w.asset}: ${w.issue}`)
-  );
-
-  // Cross-chain intelligence via Byreal CLI (fetch before decision for AI context)
-  let crossChainContext = "";
-  console.log("\n  --- Cross-Chain Intelligence (Byreal) ---");
-  try {
-    const crossChain = getCrossChainOpportunities();
-    console.log(`  Solana top yield: ${crossChain.solanaTopYield.toFixed(1)}% APY`);
-    console.log(`  ${crossChain.mantleComparison}`);
-    crossChain.opportunities.forEach((o) =>
-      console.log(`  ${o.pool}: ${o.apy.toFixed(1)}% APY [${o.risk}]`)
-    );
-    // Build context string for AI
-    if (crossChain.opportunities.length > 0) {
-      const topOps = crossChain.opportunities.slice(0, 3).map(o =>
-        `${o.pool}: ${o.apy.toFixed(1)}% APY [${o.risk} risk]`
-      ).join("; ");
-      crossChainContext = `Cross-chain: Solana top yield ${crossChain.solanaTopYield.toFixed(1)}% APY. ${crossChain.mantleComparison}. Top pools: ${topOps}`;
-    }
-  } catch (e) {
-    console.log("  Cross-chain data unavailable");
-  }
-
-  // 5. Portfolio Manager Agent (combines all)
-  console.log("\n[5/5] Portfolio Manager Agent deciding...");
-  let decision = await portfolioAgent.decide(market, yields, risk, currentAllocations);
-
-  // Enhance with Gemini AI reasoning (includes cross-chain data)
-  decision = await portfolioAgent.enhanceWithAI(decision, market, yields, risk, currentAllocations, crossChainContext);
-  console.log(`  Action: ${decision.action}`);
-  console.log(`  Confidence: ${decision.confidence}%`);
-  console.log(`  Risk Level: ${decision.riskLevel}`);
-  console.log(`  Reasoning: ${decision.reasoning}`);
-  decision.newAllocations.forEach((a) =>
-    console.log(`  ${a.symbol}: ${(a.allocationBps / 100).toFixed(1)}%`)
-  );
-
-  // Agent contributions
-  console.log("\n  --- Agent Contributions ---");
-  console.log(`  Market: ${decision.agentContributions.market}`);
-  console.log(`  Yield: ${decision.agentContributions.yield}`);
-  console.log(`  Risk: ${decision.agentContributions.risk}`);
-
-  // --- Multi-Agent Consensus Voting ---
-  console.log("\n  --- Multi-Agent Consensus ---");
-  const roundId = await executor.startConsensusRound();
-  if (roundId) {
-    // Each sub-agent submits its vote based on its analysis
-    const marketAlloc = computeMarketVote(market);
-    const yieldAlloc = computeYieldVote(yields);
-    const riskAlloc = computeRiskVote(risk);
-    const portfolioAlloc = decision.newAllocations.map((a) => a.allocationBps);
-
-    await executor.submitVote(roundId, 0, marketAlloc, market.confidence, `Market: ${market.outlook}`);
-    await executor.submitVote(roundId, 1, yieldAlloc, 70, `Best yield: ${yields.bestYieldAsset}`);
-    await executor.submitVote(roundId, 2, riskAlloc, Math.max(30, 100 - risk.riskScore * 10), `Risk: ${risk.riskScore}/10`);
-    await executor.submitVote(roundId, 3, portfolioAlloc, decision.confidence, `Portfolio: ${decision.action}`);
-
-    const consensusResult = await executor.resolveConsensus(roundId);
-    if (consensusResult?.success) {
-      console.log(`  Consensus allocations: ${consensusResult.allocations.join(", ")}`);
-      // Override decision with consensus allocations
-      for (let i = 0; i < decision.newAllocations.length && i < consensusResult.allocations.length; i++) {
-        decision.newAllocations[i].allocationBps = consensusResult.allocations[i];
-      }
-    }
-  }
-
-  // --- Commit-Reveal: Phase 1 — Commit hash BEFORE execution ---
-  let commitData: { commitId: number; nonce: string } | null = null;
-  if (decision.action !== "hold") {
-    commitData = await executor.commitDecision(decision, 100000);
-  }
-
-  // Execute — check autonomous rules first
-  let txHash: string | null = null;
-
-  const tradeCheck = checkTrade(
-    {
-      action: decision.action,
-      confidence: decision.confidence,
-      riskLevel: decision.riskLevel,
-      newAllocations: decision.newAllocations,
-    },
-    currentAllocations,
-    risk.riskScore
-  );
-
-  console.log(`\n  --- Autonomous Rules ---`);
-  console.log(`  Allowed: ${tradeCheck.allowed}`);
-  console.log(`  Reason: ${tradeCheck.reason}`);
-  if (tradeCheck.violations.length > 0) {
-    tradeCheck.violations.forEach((v) => console.log(`  Violation: ${v}`));
-  }
-
-  if (tradeCheck.allowed) {
-    // Autonomous mode approved the trade
-    if (decision.action !== "hold") {
-      // Phase 2: Execute the rebalance
-      txHash = await executor.executeRebalance(decision);
-      // Phase 3: Reveal — log decision with commit verification
-      const oldAlloc = currentAllocations.map((a) => a.allocationBps);
-      await executor.logDecisionOnChain(decision, oldAlloc, 100000, commitData);
-      totalDecisions++;
-      const blended = calculateBlendedYield(snapshot.yields, currentAllocations);
-      cumulativeROIBps += Math.round((blended * 100) / 365);
-      await executor.updateIdentity(totalDecisions, cumulativeROIBps);
-      // Record outcome for reputation tracking
-      await executor.recordDecisionOutcome(100000, decision.confidence);
-    } else {
-      totalDecisions++;
-    }
-
-    if (decision.action !== "hold") {
-      currentAllocations = decision.newAllocations.map((a) => ({
-        symbol: a.symbol,
-        allocationBps: a.allocationBps,
-      }));
-    }
-
-    // Log activity and notify linked Telegram users
-    logActivity({
-      type: "decision",
-      action: decision.action,
-      reasoning: decision.reasoning,
-      confidence: decision.confidence,
-      riskLevel: decision.riskLevel,
-      allocations: decision.newAllocations,
-      txHash,
-      source: "agent",
-    });
-    notifyDecision(decision, txHash);
-  } else if (tradeCheck.requiresApproval) {
-    // Needs manual approval
-    pendingApproval = decision;
-    console.log("\n  Awaiting user approval (Telegram/Dashboard)...");
-    logActivity({
-      type: "approval",
-      action: decision.action,
-      reasoning: "Awaiting user approval — exceeds autonomous limits",
-      confidence: decision.confidence,
-      riskLevel: decision.riskLevel,
-      allocations: decision.newAllocations,
-      source: "agent",
-    });
-    notifyApprovalNeeded(decision);
-  }
-
-  const blended = calculateBlendedYield(snapshot.yields, currentAllocations);
-  console.log(`\n  Blended portfolio yield: ${blended.toFixed(2)}% APY`);
-
-  const result: CycleResult = {
-    snapshot,
-    market,
-    yields,
-    risk,
-    decision,
-    txHash,
-    timestamp: Date.now(),
+export function getAgentStats(wallet: string) {
+  return manager?.getAgentStats(wallet) || {
+    totalDecisions: 0,
+    cumulativeROIBps: 0,
+    isRunning: false,
+    uptime: 0,
   };
-
-  cycleHistory.push(result);
-  // Cap history to prevent memory leak
-  if (cycleHistory.length > MAX_CYCLE_HISTORY) {
-    cycleHistory.splice(0, cycleHistory.length - MAX_CYCLE_HISTORY);
-  }
-  return result;
 }
 
-// --- Sub-Agent Vote Computation ---
-function computeMarketVote(market: MarketOutlook): number[] {
-  if (market.outlook === "bullish") return [3000, 4500, 2500];
-  if (market.outlook === "bearish") return [4000, 1500, 4500];
-  return [3333, 3334, 3333]; // neutral
+export function getPendingApproval(wallet: string): PortfolioDecision | null {
+  return manager?.getPendingApproval(wallet) || null;
 }
 
-function computeYieldVote(yields: YieldAnalysis): number[] {
-  const alloc = [3333, 3334, 3333];
-  const symbols = ["USDY", "mETH", "USDC"];
-  for (const r of yields.rankings) {
-    const idx = symbols.indexOf(r.asset);
-    if (idx >= 0) {
-      alloc[idx] = Math.round((r.apy / yields.rankings.reduce((s, x) => s + x.apy, 0)) * 10000);
-    }
-  }
-  // Normalize to 10000
-  const sum = alloc.reduce((s, v) => s + v, 0);
-  if (sum !== 10000 && sum > 0) {
-    const diff = 10000 - sum;
-    alloc[0] += diff;
-  }
-  // Clamp each to max 6000
-  for (let i = 0; i < alloc.length; i++) {
-    alloc[i] = Math.min(6000, Math.max(1000, alloc[i]));
-  }
-  const finalSum = alloc.reduce((s, v) => s + v, 0);
-  if (finalSum !== 10000) alloc[alloc.length - 1] += 10000 - finalSum;
-  return alloc;
+export async function approveDecision(wallet: string, source: "telegram" | "dashboard" | "mcp" = "telegram"): Promise<boolean> {
+  return manager?.approveDecision(wallet, source) || false;
 }
 
-function computeRiskVote(risk: RiskAnalysis): number[] {
-  if (risk.riskScore >= 7) return [4500, 1000, 4500];
-  if (risk.riskScore >= 5) return [4000, 2000, 4000];
-  return [3000, 4000, 3000];
+export function rejectDecision(wallet: string, source: "telegram" | "dashboard" | "mcp" = "telegram"): boolean {
+  return manager?.rejectDecision(wallet, source) || false;
 }
 
-// --- DCA Execution ---
-async function checkAndExecuteDca(executor: Executor): Promise<void> {
-  const ready = getReadyPlans();
-  if (ready.length === 0) return;
-
-  console.log(`\n[DCA] ${ready.length} plan(s) ready for execution`);
-
-  for (const plan of ready) {
-    try {
-      console.log(`[DCA] Executing: ${plan.sourceAsset} -> ${plan.targetAsset} (${plan.amountBps / 100}%)`);
-      const txHash = await executor.executeDcaSwap(plan.sourceAsset, plan.targetAsset, plan.amountBps);
-
-      if (!txHash) {
-        console.warn(`[DCA] Plan ${plan.id} swap returned null — skipping, will retry next interval`);
-        continue;
-      }
-
-      markExecuted(plan.id);
-
-      logActivity({
-        type: "dca",
-        action: `DCA ${plan.sourceAsset} -> ${plan.targetAsset}`,
-        reasoning: `Scheduled DCA: ${plan.amountBps / 100}% of ${plan.sourceAsset} swapped to ${plan.targetAsset} (execution #${plan.totalExecutions + 1})`,
-        source: "agent",
-        txHash,
-      });
-
-      const msg = `*DCA Executed* \u{1F504}\n\n${plan.sourceAsset} \u2192 ${plan.targetAsset} (${plan.amountBps / 100}%)\nExecution #${plan.totalExecutions + 1}`;
-      notifyAllLinkedUsers(`${msg}\n\n[View TX](https://mantlescan.xyz/tx/${txHash})`);
-    } catch (error) {
-      console.error(`[DCA] Plan ${plan.id} failed:`, error);
-    }
-  }
+export function setRiskProfile(wallet: string, profile: RiskProfile): void {
+  manager?.setRiskProfile(wallet, profile);
 }
 
-// --- Scheduled Task Execution ---
-async function checkAndExecuteScheduledTasks(
-  executor: Executor,
-  snapshot: { prices: { [symbol: string]: number } }
-): Promise<void> {
-  const schedulerSnapshot: SchedulerMarketSnapshot = { prices: snapshot.prices };
-  const ready = getReadyTasks(schedulerSnapshot);
-  if (ready.length === 0) return;
-
-  console.log(`\n[Scheduler] ${ready.length} task(s) ready for execution`);
-
-  for (const task of ready) {
-    try {
-      console.log(`[Scheduler] Executing: ${task.name} (${task.type})`);
-      let txHash: string | null = null;
-
-      let executed = false;
-
-      if (task.action.targetAllocations) {
-        // Execute allocation shift
-        const decision = {
-          action: "rebalance" as const,
-          reasoning: `Scheduled task: ${task.name}`,
-          riskLevel: "medium",
-          confidence: 80,
-          newAllocations: task.action.targetAllocations.map((a) => ({
-            asset: config.assets[a.symbol as keyof typeof config.assets] || "",
-            symbol: a.symbol,
-            allocationBps: a.allocationBps,
-          })),
-          agentContributions: {
-            market: "N/A (scheduled)",
-            yield: "N/A (scheduled)",
-            risk: "N/A (scheduled)",
-          },
-        };
-        txHash = await executor.executeRebalance(decision);
-        if (txHash) {
-          currentAllocations = task.action.targetAllocations.map((a) => ({
-            symbol: a.symbol,
-            allocationBps: a.allocationBps,
-          }));
-          executed = true;
-        } else {
-          console.warn(`[Scheduler] Task ${task.name} rebalance returned null — will retry`);
-        }
-      } else if (task.action.type === "rebalance") {
-        // Force a regular AI rebalance cycle
-        console.log("[Scheduler] Triggering forced rebalance cycle...");
-        await runCycle(executor);
-        executed = true;
-      }
-
-      if (!executed) continue;
-
-      markTaskExecuted(task.id);
-
-      logActivity({
-        type: "scheduled",
-        action: `Scheduled: ${task.name}`,
-        reasoning: `${task.type} task executed — ${task.name} (execution #${task.totalExecutions + 1})`,
-        source: "agent",
-        txHash,
-      });
-
-      const msg = `*Scheduled Task Executed* \u{1F4C5}\n\n*${task.name}*\nType: ${task.type}\nExecution #${task.totalExecutions + 1}`;
-      notifyAllLinkedUsers(txHash ? `${msg}\n\n[View TX](https://mantlescan.xyz/tx/${txHash})` : msg);
-    } catch (error) {
-      console.error(`[Scheduler] Task ${task.id} failed:`, error);
-    }
-  }
+export function getAutonomousRules(wallet: string): AutonomousRules {
+  return manager?.getAutonomousRules(wallet) || {
+    enabled: false,
+    maxPortfolioChangeBps: 2000,
+    maxDailyTrades: 3,
+    allowedAssets: ["USDY", "mETH", "USDC"],
+    riskProfile: "moderate",
+    maxRiskScore: 7,
+    minConfidence: 60,
+  };
 }
 
+export function updateAutonomousRules(wallet: string, update: Partial<AutonomousRules>): AutonomousRules {
+  return manager?.updateAutonomousRules(wallet, update) || getAutonomousRules(wallet);
+}
+
+export function toggleAutonomous(wallet: string, enabled: boolean): AutonomousRules {
+  return manager?.toggleAutonomous(wallet, enabled) || getAutonomousRules(wallet);
+}
+
+export function getAutonomousStatus(wallet: string) {
+  return manager?.getAutonomousStatus(wallet) || {
+    enabled: false,
+    maxPortfolioChangeBps: 2000,
+    maxDailyTrades: 3,
+    allowedAssets: ["USDY", "mETH", "USDC"],
+    riskProfile: "moderate" as const,
+    maxRiskScore: 7,
+    minConfidence: 60,
+    tradesToday: 0,
+    formattedRules: "",
+  };
+}
+
+// --- DCA Exports (wallet-scoped) ---
+export function getDcaPlans(wallet: string): DcaPlan[] {
+  return getDcaPlansForUser(wallet);
+}
+export function createDcaPlan(wallet: string, opts: { sourceAsset: string; targetAsset: string; amountBps: number; intervalMs: number }): DcaPlan {
+  return createDcaPlanForUser(wallet, opts);
+}
+export function removeDcaPlan(wallet: string, id: string): boolean {
+  return removeDcaPlanForUser(wallet, id);
+}
+export function pauseDcaPlan(wallet: string, id: string): boolean {
+  return pauseDcaPlanForUser(wallet, id);
+}
+export function resumeDcaPlan(wallet: string, id: string): boolean {
+  return resumeDcaPlanForUser(wallet, id);
+}
+export { formatInterval };
+export type { DcaPlan };
+
+// --- Scheduler Exports (wallet-scoped) ---
+export function getScheduledTasks(wallet: string): ScheduledTask[] {
+  return getScheduledTasksForUser(wallet);
+}
+export function createScheduledTask(wallet: string, task: Parameters<typeof createScheduledTaskForUser>[1]): ScheduledTask {
+  return createScheduledTaskForUser(wallet, task);
+}
+export function removeScheduledTask(wallet: string, id: string): boolean {
+  return removeScheduledTaskForUser(wallet, id);
+}
+export function pauseScheduledTask(wallet: string, id: string): boolean {
+  return pauseScheduledTaskForUser(wallet, id);
+}
+export function resumeScheduledTask(wallet: string, id: string): boolean {
+  return resumeScheduledTaskForUser(wallet, id);
+}
+export function createWeeklyRebalance(wallet: string): ScheduledTask {
+  return createWeeklyRebalanceForUser(wallet);
+}
+export function createSafetyShift(wallet: string, priceUSD: number): ScheduledTask {
+  return createSafetyShiftForUser(wallet, priceUSD);
+}
+export function createYieldChase(wallet: string, mETHPriceAbove: number): ScheduledTask {
+  return createYieldChaseForUser(wallet, mETHPriceAbove);
+}
+export type { ScheduledTask };
+
+// --- Main Entry Point ---
 async function main(): Promise<void> {
   console.log("╔════════════════════════════════════════════════════════╗");
-  console.log("║        Sentinel — AI Treasury on Mantle               ║");
+  console.log("║        Sentinel — Multi-User AI Treasury on Mantle    ║");
   console.log("║                                                        ║");
   console.log("║   Agents: Market | Yield | Risk | Portfolio            ║");
   console.log("╚════════════════════════════════════════════════════════╝\n");
 
-  if (!config.privateKey || !config.vaultAddress) {
-    console.error("ERROR: PRIVATE_KEY and VAULT_ADDRESS must be set in .env");
-    console.error("The agent requires a configured wallet and deployed contracts to run.");
+  if (!config.privateKey) {
+    console.error("ERROR: PRIVATE_KEY must be set in .env");
     process.exit(1);
   }
 
-  let executor: Executor;
-  try {
-    executor = new Executor();
-    globalExecutor = executor;
-    console.log(`Agent wallet: ${executor.getWalletAddress()}`);
-  } catch (error) {
-    console.error("ERROR: Failed to initialize executor. Check your PRIVATE_KEY, VAULT_ADDRESS, LOGGER_ADDRESS, and IDENTITY_ADDRESS.");
-    console.error(error);
+  if (!config.factoryAddress && !config.vaultAddress) {
+    console.error("ERROR: Either FACTORY_ADDRESS or VAULT_ADDRESS must be set in .env");
     process.exit(1);
   }
 
-  console.log(`Risk profile: moderate`);
+  manager = new AgentManager();
   console.log(`Interval: ${config.intervalMs / 1000}s\n`);
 
-  await runCycle(executor);
-
-  setInterval(async () => {
-    try {
-      // Check DCA plans before each cycle
-      await checkAndExecuteDca(executor);
-
-      const result = await runCycle(executor);
-
-      // Check scheduled tasks after cycle (uses fresh snapshot prices)
-      const prices: { [symbol: string]: number } = {};
-      if (result?.snapshot?.prices) {
-        for (const p of result.snapshot.prices) {
-          prices[p.asset] = p.priceUSD;
-        }
-      }
-      await checkAndExecuteScheduledTasks(executor, { prices });
-    } catch (error) {
-      console.error("Cycle failed:", error);
-    }
-  }, config.intervalMs);
+  await manager.start();
 }
-
-// --- Exports for API / Telegram ---
-export function getDecisionHistory() {
-  return cycleHistory;
-}
-export function getCurrentAllocations() {
-  return currentAllocations;
-}
-export function getAgentStats() {
-  return { totalDecisions, cumulativeROIBps, isRunning: true, uptime: process.uptime() };
-}
-export function getPendingApproval() {
-  return pendingApproval;
-}
-export async function approveDecision(source: "telegram" | "dashboard" | "mcp" = "telegram") {
-  if (!pendingApproval) return false;
-  if (!globalExecutor) {
-    console.error("Cannot approve: no executor configured");
-    return false;
-  }
-
-  const decision = pendingApproval;
-  let txHash: string | null = null;
-
-  // Execute on-chain
-  if (decision.action !== "hold") {
-    txHash = await globalExecutor.executeRebalance(decision);
-    const oldAlloc = currentAllocations.map((a) => a.allocationBps);
-    await globalExecutor.logDecisionOnChain(decision, oldAlloc, 100000);
-  }
-
-  logActivity({
-    type: "approval",
-    action: decision.action,
-    reasoning: `Trade approved via ${source}`,
-    confidence: decision.confidence,
-    riskLevel: decision.riskLevel,
-    allocations: decision.newAllocations,
-    txHash,
-    source,
-  });
-
-  currentAllocations = decision.newAllocations.map((a) => ({
-    symbol: a.symbol,
-    allocationBps: a.allocationBps,
-  }));
-  totalDecisions++;
-
-  const blended = calculateBlendedYield([], currentAllocations);
-  cumulativeROIBps += Math.round((blended * 100) / 365);
-  await globalExecutor.updateIdentity(totalDecisions, cumulativeROIBps);
-
-  pendingApproval = null;
-  return true;
-}
-export function rejectDecision(source: "telegram" | "dashboard" | "mcp" = "telegram") {
-  if (pendingApproval) {
-    logActivity({
-      type: "rejection",
-      action: pendingApproval.action,
-      reasoning: `Trade rejected via ${source}`,
-      source,
-    });
-  }
-  pendingApproval = null;
-  return true;
-}
-export function setRiskProfile(profile: RiskProfile) {
-  portfolioAgent.setRiskProfile(profile);
-}
-export function getAutonomousRules() {
-  return getRules();
-}
-export function updateAutonomousRules(update: Partial<AutonomousRules>) {
-  return setRules(update);
-}
-export function toggleAutonomous(enabled: boolean) {
-  return enableAutonomous(enabled);
-}
-export function getAutonomousStatus() {
-  const rules = getRules();
-  return {
-    ...rules,
-    tradesToday: getTradesToday(),
-    formattedRules: formatRules(),
-  };
-}
-
-// --- DCA Exports ---
-export {
-  getDcaPlans,
-  createDcaPlan,
-  removeDcaPlan,
-  pauseDcaPlan,
-  resumeDcaPlan,
-  formatInterval,
-};
-export type { DcaPlan };
-
-// --- Scheduler Exports ---
-export {
-  getScheduledTasks,
-  createScheduledTask,
-  removeScheduledTask,
-  pauseScheduledTask,
-  resumeScheduledTask,
-  createWeeklyRebalance,
-  createSafetyShift,
-  createYieldChase,
-};
-export type { ScheduledTask };
 
 main().catch(console.error);

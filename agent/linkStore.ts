@@ -84,3 +84,14 @@ export function getAllLinkedWallets(): Record<string, number> {
   const store = readStore();
   return store.linkedWallets;
 }
+
+/**
+ * Reverse lookup: get the wallet address linked to a Telegram chatId.
+ */
+export function getWalletForChat(chatId: number): string | null {
+  const store = readStore();
+  for (const [wallet, cid] of Object.entries(store.linkedWallets)) {
+    if (cid === chatId) return wallet;
+  }
+  return null;
+}

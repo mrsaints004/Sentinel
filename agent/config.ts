@@ -8,6 +8,7 @@ export const config = {
   chainId: 5000,
 
   // Contracts (deployed on Mantle Mainnet)
+  factoryAddress: process.env.FACTORY_ADDRESS || "",
   vaultAddress: process.env.VAULT_ADDRESS || "",
   loggerAddress: process.env.LOGGER_ADDRESS || "",
   identityAddress: process.env.IDENTITY_ADDRESS || "",

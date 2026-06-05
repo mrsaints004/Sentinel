@@ -84,4 +84,48 @@ export function formatTokenBalance(balance: bigint, symbol: string): number {
   return parseFloat(ethers.formatUnits(balance, decimals));
 }
 
-export { VAULT_ADDRESS, LOGGER_ADDRESS, IDENTITY_ADDRESS };
+// --- Multi-user support ---
+
+const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || process.env.FACTORY_ADDRESS || "";
+
+const FACTORY_ABI = [
+  "function getVault(address owner) external view returns (address vault, address logger, uint256 createdAt)",
+  "function vaultCount() external view returns (uint256)",
+];
+
+export function getFactoryContract(): ethers.Contract | null {
+  if (!FACTORY_ADDRESS) return null;
+  return new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, getProvider());
+}
+
+/**
+ * Get a vault contract for a specific user (by looking up the factory).
+ * Falls back to the global VAULT_ADDRESS if no factory or no vault found.
+ */
+export async function getUserVaultAddress(wallet: string): Promise<{ vault: string; logger: string } | null> {
+  const factory = getFactoryContract();
+  if (factory) {
+    try {
+      const [vault, logger, createdAt] = await factory.getVault(wallet);
+      if (vault !== ethers.ZeroAddress && Number(createdAt) > 0) {
+        return { vault, logger };
+      }
+    } catch {}
+  }
+  // Fallback to global
+  if (VAULT_ADDRESS) return { vault: VAULT_ADDRESS, logger: LOGGER_ADDRESS };
+  return null;
+}
+
+/**
+ * Get vault contract for a specific wallet address.
+ * NOTE: This is a sync version that uses the global vault as fallback.
+ * For multi-user, use getUserVaultAddress() async version.
+ */
+export function getVaultContractForAddress(_wallet: string): ethers.Contract | null {
+  // In the sync API route context, we fall back to the global vault.
+  // The async getUserVaultAddress should be used for proper per-user resolution.
+  return getVaultContract();
+}
+
+export { VAULT_ADDRESS, LOGGER_ADDRESS, IDENTITY_ADDRESS, FACTORY_ADDRESS };

@@ -1,7 +1,6 @@
-import * as fs from "fs/promises";
-import * as path from "path";
+import { loadUserFile, saveUserFile } from "./userStore";
 
-const LOG_PATH = path.join(__dirname, "..", ".activity-log.json");
+const LOG_FILE = "activity-log.json";
 
 export interface ActivityEntry {
   id: number;
@@ -16,47 +15,43 @@ export interface ActivityEntry {
   timestamp: number;
 }
 
-// In-memory cache to avoid reading from disk on every call
-let logCache: ActivityEntry[] | null = null;
+// Per-user in-memory cache
+const logCaches: Map<string, ActivityEntry[]> = new Map();
 
-async function readLog(): Promise<ActivityEntry[]> {
-  if (logCache) return logCache;
-  try {
-    const data = await fs.readFile(LOG_PATH, "utf-8");
-    logCache = JSON.parse(data);
-    return logCache!;
-  } catch {
-    logCache = [];
-    return [];
-  }
+async function readLog(wallet: string): Promise<ActivityEntry[]> {
+  const key = wallet.toLowerCase();
+  const cached = logCaches.get(key);
+  if (cached) return cached;
+  const data = await loadUserFile<ActivityEntry[]>(key, LOG_FILE, []);
+  logCaches.set(key, data);
+  return data;
 }
 
-async function writeLog(entries: ActivityEntry[]): Promise<void> {
-  // Keep last 100 entries
+async function writeLog(wallet: string, entries: ActivityEntry[]): Promise<void> {
+  const key = wallet.toLowerCase();
   const trimmed = entries.slice(-100);
-  logCache = trimmed;
-  await fs.writeFile(LOG_PATH, JSON.stringify(trimmed, null, 2));
+  logCaches.set(key, trimmed);
+  await saveUserFile(key, LOG_FILE, trimmed);
 }
 
-export function logActivity(entry: Omit<ActivityEntry, "id" | "timestamp">): void {
-  // Fire-and-forget async write to avoid blocking the agent loop
-  _logAsync(entry).catch((err) =>
+export function logActivity(wallet: string, entry: Omit<ActivityEntry, "id" | "timestamp">): void {
+  _logAsync(wallet, entry).catch((err) =>
     console.warn("[ActivityLog] Write failed:", err.message)
   );
 }
 
-async function _logAsync(entry: Omit<ActivityEntry, "id" | "timestamp">): Promise<void> {
-  const log = await readLog();
+async function _logAsync(wallet: string, entry: Omit<ActivityEntry, "id" | "timestamp">): Promise<void> {
+  const log = await readLog(wallet);
   const newEntry: ActivityEntry = {
     ...entry,
     id: log.length + 1,
     timestamp: Date.now(),
   };
   log.push(newEntry);
-  await writeLog(log);
+  await writeLog(wallet, log);
 }
 
-export async function getRecentActivity(limit = 20): Promise<ActivityEntry[]> {
-  const log = await readLog();
+export async function getRecentActivity(wallet: string, limit = 20): Promise<ActivityEntry[]> {
+  const log = await readLog(wallet);
   return log.slice(-limit).reverse();
 }

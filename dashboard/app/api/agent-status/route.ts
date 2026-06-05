@@ -1,15 +1,29 @@
 import { NextResponse } from "next/server";
-import { getIdentityContract, getVaultContract, fetchPricesUSD, formatTokenBalance } from "../../../lib/provider";
+import { getWalletFromQuery } from "../../../lib/auth";
+import { getIdentityContract, getVaultContract, getUserVaultAddress, getProvider, fetchPricesUSD, formatTokenBalance } from "../../../lib/provider";
+import { ethers } from "ethers";
 
-export async function GET() {
+const VAULT_ABI_MINI = [
+  "function getPortfolio() external view returns (address[], string[], uint256[], uint256[])",
+];
+
+export async function GET(request: Request) {
+  const wallet = getWalletFromQuery(request);
   const identity = getIdentityContract();
-  const vault = getVaultContract();
   const agentAddress = process.env.AGENT_WALLET_ADDRESS || process.env.NEXT_PUBLIC_AGENT_ADDRESS || "";
 
-  // Try to build portfolio history from on-chain data
+  // Resolve vault for this user
+  let vault: ethers.Contract | null = null;
+  if (wallet) {
+    const info = await getUserVaultAddress(wallet);
+    if (info) {
+      vault = new ethers.Contract(info.vault, VAULT_ABI_MINI, getProvider());
+    }
+  }
+  if (!vault) vault = getVaultContract();
+
   let portfolioHistory: { timestamp: number; value: number }[] = [];
 
-  // Get current portfolio value for history context
   if (vault) {
     try {
       const [, names, balances] = await vault.getPortfolio();
@@ -20,11 +34,9 @@ export async function GET() {
         currentValue += balanceFloat * (prices[symbol] ?? 1.0);
       });
 
-      // Generate history based on real current value
       const now = Date.now();
       for (let i = 6; i >= 0; i--) {
         const ts = now - i * 86400 * 1000;
-        // Slight daily variation based on blended APY
         const dailyReturn = 1 + (3.8 / 100 / 365);
         const value = currentValue / Math.pow(dailyReturn, i);
         portfolioHistory.push({ timestamp: ts, value: Math.round(value) });
@@ -33,7 +45,6 @@ export async function GET() {
     } catch {}
   }
 
-  // Read on-chain agent identity
   if (identity && agentAddress) {
     try {
       const tokenId = await identity.agentToToken(agentAddress);
@@ -42,35 +53,25 @@ export async function GET() {
         const createdAt = Number(metadata.createdAt) * 1000;
         const uptimeSeconds = Math.floor((Date.now() - createdAt) / 1000);
 
-        // Fetch on-chain reputation metrics
         let reputation = null;
         try {
           const [winRate, avgConfidence, maxDrawdownBps, streakLength, accuracyScore, totalGames] =
             await identity.computeReputation(tokenId);
           reputation = {
-            winRate: Number(winRate),
-            avgConfidence: Number(avgConfidence),
-            maxDrawdownBps: Number(maxDrawdownBps),
-            streakLength: Number(streakLength),
-            accuracyScore: Number(accuracyScore),
-            totalGames: Number(totalGames),
+            winRate: Number(winRate), avgConfidence: Number(avgConfidence),
+            maxDrawdownBps: Number(maxDrawdownBps), streakLength: Number(streakLength),
+            accuracyScore: Number(accuracyScore), totalGames: Number(totalGames),
           };
-        } catch {
-          // Reputation not available yet
-        }
+        } catch {}
 
         return NextResponse.json({
-          agentName: metadata.agentName,
-          strategyType: metadata.strategyType,
+          agentName: metadata.agentName, strategyType: metadata.strategyType,
           totalDecisions: Number(metadata.totalDecisions),
           cumulativeROIBps: Number(metadata.cumulativeROIBps),
-          isRunning: true,
-          uptime: uptimeSeconds,
+          isRunning: true, uptime: uptimeSeconds,
           walletAddress: agentAddress,
           lastActive: new Date(Number(metadata.lastActiveAt) * 1000).toISOString(),
-          portfolioHistory,
-          reputation,
-          source: "on-chain-mainnet",
+          portfolioHistory, reputation, source: "on-chain-mainnet",
         });
       }
     } catch (error) {
@@ -78,17 +79,10 @@ export async function GET() {
     }
   }
 
-  // Fallback if contracts not yet deployed
   return NextResponse.json({
-    agentName: "Sentinel Alpha",
-    strategyType: "Yield-Optimized RWA",
-    totalDecisions: 0,
-    cumulativeROIBps: 0,
-    isRunning: false,
-    uptime: 0,
-    walletAddress: agentAddress || "",
-    lastActive: new Date().toISOString(),
-    portfolioHistory,
-    source: "awaiting-deployment",
+    agentName: "Sentinel Alpha", strategyType: "Yield-Optimized RWA",
+    totalDecisions: 0, cumulativeROIBps: 0, isRunning: false, uptime: 0,
+    walletAddress: agentAddress || "", lastActive: new Date().toISOString(),
+    portfolioHistory, source: "awaiting-deployment",
   });
 }

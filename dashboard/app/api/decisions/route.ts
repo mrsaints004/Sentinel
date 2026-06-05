@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
-import { getLoggerContract } from "../../../lib/provider";
+import { ethers } from "ethers";
+import { getWalletFromQuery } from "../../../lib/auth";
+import { getLoggerContract, getUserVaultAddress, getProvider } from "../../../lib/provider";
 
-export async function GET() {
-  const logger = getLoggerContract();
+const LOGGER_ABI = [
+  "function getRecentDecisions(uint256 count) external view returns (tuple(uint256 id, address agent, string reasoning, string action, uint256[] oldAllocations, uint256[] newAllocations, string[] assetNames, uint256 timestamp, uint256 portfolioValueUSD, string riskLevel)[])",
+];
 
-  if (!logger) {
-    return NextResponse.json([]);
+export async function GET(request: Request) {
+  const wallet = getWalletFromQuery(request);
+
+  let logger: ethers.Contract | null = null;
+
+  if (wallet) {
+    const info = await getUserVaultAddress(wallet);
+    if (info) {
+      logger = new ethers.Contract(info.logger, LOGGER_ABI, getProvider());
+    }
   }
+  if (!logger) logger = getLoggerContract();
+  if (!logger) return NextResponse.json([]);
 
   try {
     const decisions = await logger.getRecentDecisions(12);
-
     const formatted = decisions.map((d: any) => ({
       id: Number(d.id),
       action: d.action,
@@ -22,10 +34,7 @@ export async function GET() {
       portfolioValueUSD: Number(d.portfolioValueUSD),
       riskLevel: d.riskLevel,
     }));
-
-    // Sort by ID descending (most recent first)
     formatted.sort((a: any, b: any) => b.id - a.id);
-
     return NextResponse.json(formatted);
   } catch (error) {
     console.error("[API/decisions] On-chain fetch failed:", error);

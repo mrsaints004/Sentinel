@@ -1,7 +1,6 @@
-import * as fs from "fs";
-import * as path from "path";
+import { loadUserFileSync, saveUserFileSync } from "./userStore";
 
-const RULES_PATH = path.join(__dirname, "..", ".autonomous-rules.json");
+const RULES_FILE = "autonomous-rules.json";
 
 export interface AutonomousRules {
   enabled: boolean;
@@ -30,56 +29,49 @@ const DEFAULT_RULES: AutonomousRules = {
   minConfidence: 60,
 };
 
-// Load persisted rules from disk
-function loadRules(): AutonomousRules {
-  try {
-    if (fs.existsSync(RULES_PATH)) {
-      const data = JSON.parse(fs.readFileSync(RULES_PATH, "utf-8"));
-      return { ...DEFAULT_RULES, ...data };
-    }
-  } catch {}
-  return { ...DEFAULT_RULES };
+// Per-user daily trade counter (in-memory, resets on restart)
+const userTradesToday: Map<string, { count: number; date: string }> = new Map();
+
+function getUTCDateString(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function persistRules(r: AutonomousRules): void {
-  try {
-    fs.writeFileSync(RULES_PATH, JSON.stringify(r, null, 2));
-  } catch (err) {
-    console.warn("[AutonomousRules] Failed to persist rules:", (err as Error).message);
+function getUserTradesToday(wallet: string): number {
+  const today = getUTCDateString();
+  const entry = userTradesToday.get(wallet.toLowerCase());
+  if (!entry || entry.date !== today) return 0;
+  return entry.count;
+}
+
+function incrementUserTrades(wallet: string): void {
+  const today = getUTCDateString();
+  const key = wallet.toLowerCase();
+  const entry = userTradesToday.get(key);
+  if (!entry || entry.date !== today) {
+    userTradesToday.set(key, { count: 1, date: today });
+  } else {
+    entry.count++;
   }
 }
 
-let rules: AutonomousRules = loadRules();
-let tradesToday: number = 0;
-let lastTradeDate: string = "";
-
-// Use UTC date string for timezone-independent daily reset
-function getUTCDateString(): string {
-  return new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+export function getRules(wallet: string): AutonomousRules {
+  const data = loadUserFileSync<Partial<AutonomousRules>>(wallet, RULES_FILE, {});
+  return { ...DEFAULT_RULES, ...data };
 }
 
-export function getRules(): AutonomousRules {
-  return { ...rules };
+export function setRules(wallet: string, update: Partial<AutonomousRules>): AutonomousRules {
+  const rules = getRules(wallet);
+  const updated = { ...rules, ...update };
+  saveUserFileSync(wallet, RULES_FILE, updated);
+  return updated;
 }
 
-export function setRules(update: Partial<AutonomousRules>): AutonomousRules {
-  rules = { ...rules, ...update };
-  persistRules(rules);
-  return { ...rules };
-}
-
-export function enableAutonomous(enabled: boolean): AutonomousRules {
-  rules.enabled = enabled;
-  persistRules(rules);
-  return { ...rules };
-}
-
-export function resetDailyCounter(): void {
-  tradesToday = 0;
-  lastTradeDate = getUTCDateString();
+export function enableAutonomous(wallet: string, enabled: boolean): AutonomousRules {
+  return setRules(wallet, { enabled });
 }
 
 export function checkTrade(
+  wallet: string,
   decision: {
     action: string;
     confidence: number;
@@ -89,12 +81,8 @@ export function checkTrade(
   currentAllocations: { symbol: string; allocationBps: number }[],
   riskScore: number
 ): TradeCheck {
-  // Reset daily counter if new day (UTC)
-  const today = getUTCDateString();
-  if (today !== lastTradeDate) {
-    tradesToday = 0;
-    lastTradeDate = today;
-  }
+  const rules = getRules(wallet);
+  const tradesToday = getUserTradesToday(wallet);
 
   if (!rules.enabled) {
     return {
@@ -173,22 +161,21 @@ export function checkTrade(
   }
 
   // All checks passed — trade is allowed
-  tradesToday++;
+  incrementUserTrades(wallet);
   return {
     allowed: true,
-    reason: `Trade within autonomous limits. (${tradesToday}/${rules.maxDailyTrades} daily trades used)`,
+    reason: `Trade within autonomous limits. (${tradesToday + 1}/${rules.maxDailyTrades} daily trades used)`,
     requiresApproval: false,
     violations: [],
   };
 }
 
-export function getTradesToday(): number {
-  const today = getUTCDateString();
-  if (today !== lastTradeDate) return 0;
-  return tradesToday;
+export function getTradesToday(wallet: string): number {
+  return getUserTradesToday(wallet);
 }
 
-export function formatRules(): string {
+export function formatRules(wallet: string): string {
+  const rules = getRules(wallet);
   return [
     `Autonomous Mode: ${rules.enabled ? "ENABLED" : "DISABLED"}`,
     `Max Portfolio Change: ${(rules.maxPortfolioChangeBps / 100).toFixed(0)}% per asset`,

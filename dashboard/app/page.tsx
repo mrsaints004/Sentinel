@@ -43,6 +43,15 @@ interface AgentInfo {
   portfolioHistory: { timestamp: number; value: number }[];
 }
 
+/**
+ * Helper: append wallet query param to URL for scoped data fetching.
+ */
+function walletUrl(url: string, walletAddress?: string): string {
+  if (!walletAddress) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}wallet=${walletAddress}`;
+}
+
 export default function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [decisions, setDecisions] = useState<any[]>([]);
@@ -52,12 +61,15 @@ export default function Dashboard() {
   const wallet = useWallet();
 
   useEffect(() => {
+    if (!wallet.isConnected || !wallet.address) return;
+    const addr = wallet.address;
+
     async function fetchData() {
       try {
         const [portfolioRes, decisionsRes, agentRes] = await Promise.all([
-          fetch("/api/portfolio"),
-          fetch("/api/decisions"),
-          fetch("/api/agent-status"),
+          fetch(walletUrl("/api/portfolio", addr)),
+          fetch(walletUrl("/api/decisions", addr)),
+          fetch(walletUrl("/api/agent-status", addr)),
         ]);
         setPortfolio(await portfolioRes.json());
         setDecisions(await decisionsRes.json());
@@ -69,7 +81,7 @@ export default function Dashboard() {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [wallet.isConnected, wallet.address]);
 
   // Show hero landing page when wallet is not connected
   if (!wallet.isConnected) {
@@ -149,8 +161,8 @@ export default function Dashboard() {
                   <span className="text-sm font-bold text-s-accent">1</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-s-text">Deposit USDC into the vault</p>
-                  <p className="text-xs text-s-text-muted mt-0.5">Your funds stay on Mantle — non-custodial, transparent.</p>
+                  <p className="text-sm font-medium text-s-text">Deploy your vault</p>
+                  <p className="text-xs text-s-text-muted mt-0.5">Create your own vault on Mantle — non-custodial, transparent.</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
@@ -274,6 +286,7 @@ export default function Dashboard() {
               isConnected={wallet.isConnected}
               onConnect={wallet.connect}
               onClose={() => setTab("dashboard")}
+              walletAddress={wallet.address ?? undefined}
             />
           </div>
         )}
@@ -369,19 +382,10 @@ export default function Dashboard() {
               blendedYield={portfolio.blendedYield}
             />
 
-            {/* How It Works */}
             <HowItWorks />
-
-            {/* Cross-Chain Intelligence */}
             <ByrealSkills />
-
-            {/* Autonomous Settings */}
             <AutonomousSettings />
-
-            {/* Telegram + MCP */}
             <TelegramConnect />
-
-            {/* Deposit */}
             <DepositForm isConnected={wallet.isConnected} onConnect={wallet.connect} />
 
             {/* On-chain info */}
@@ -395,18 +399,16 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-xs text-s-text-muted">Your Wallet</span>
+                  <span className="text-xs text-s-accent font-mono">
+                    {wallet.address ? `${wallet.address.slice(0, 8)}...${wallet.address.slice(-4)}` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-xs text-s-text-muted">Agent Wallet</span>
                   <span className="text-xs text-s-accent font-mono">
                     {agent.walletAddress.slice(0, 8)}...{agent.walletAddress.slice(-4)}
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-s-text-muted">Contracts</span>
-                  <span className="text-xs text-s-text">3 deployed</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-xs text-s-text-muted">Identity</span>
-                  <span className="text-xs font-medium text-s-purple">Agent Identity NFT</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-xs text-s-text-muted">Network</span>
