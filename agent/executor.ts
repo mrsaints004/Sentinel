@@ -122,6 +122,31 @@ export class Executor {
     }
   }
 
+  /**
+   * Estimate total portfolio value in USD from on-chain balances.
+   * Stablecoins (USDC, USDY) treated as $1, mETH uses market price if available.
+   */
+  async getPortfolioValueUSD(mETHPriceUSD?: number): Promise<number> {
+    try {
+      const { names, balances } = await this.getCurrentAllocations();
+      let totalUSD = 0;
+      for (let i = 0; i < names.length; i++) {
+        const symbol = names[i];
+        const balance = Number(ethers.formatUnits(balances[i], 18));
+        if (symbol === "USDC" || symbol === "USDY") {
+          totalUSD += balance;
+        } else if (symbol === "mETH") {
+          totalUSD += balance * (mETHPriceUSD || 2500);
+        } else {
+          totalUSD += balance; // assume $1 for unknown tokens
+        }
+      }
+      return Math.max(totalUSD, 1); // avoid zero
+    } catch {
+      return 100000; // fallback if contract call fails
+    }
+  }
+
   // --- Commit-Reveal ---
 
   async commitDecision(
@@ -363,6 +388,26 @@ export class Executor {
     } catch (error) {
       console.error("[Consensus] Failed to start round:", error);
       return null;
+    }
+  }
+
+  /**
+   * Fund sub-agent wallets with MNT for gas if their balance is low.
+   * Called automatically before consensus voting.
+   */
+  async fundSubAgents(minBalance = ethers.parseEther("0.02"), topUp = ethers.parseEther("0.05")): Promise<void> {
+    for (let i = 0; i < this.subAgentWallets.length; i++) {
+      const sub = this.subAgentWallets[i];
+      const balance = await this.provider.getBalance(sub.address);
+      if (balance < minBalance) {
+        try {
+          const tx = await this.wallet.sendTransaction({ to: sub.address, value: topUp });
+          await tx.wait();
+          console.log(`[Funding] Sent 0.05 MNT to sub-agent ${i} (${sub.address.slice(0, 10)}...)`);
+        } catch (e: any) {
+          console.error(`[Funding] Failed to fund sub-agent ${i}:`, e.shortMessage || e.message);
+        }
+      }
     }
   }
 

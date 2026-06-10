@@ -49,7 +49,7 @@ export function verifyLinkToken(token: string, chatId: number): { success: boole
   delete store.pendingTokens[trimmed];
   writeStore(store);
 
-  logActivity({
+  logActivity(pending.walletAddress.toLowerCase(), {
     type: "link",
     action: "link",
     reasoning: `Telegram account linked to wallet ${pending.walletAddress.slice(0, 6)}...${pending.walletAddress.slice(-4)}`,

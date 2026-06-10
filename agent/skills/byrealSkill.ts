@@ -136,6 +136,80 @@ export function getOverview(): ByrealOverview | null {
  * Get cross-chain yield comparison for the agent
  * Compares real Solana CLMM yields with Mantle yields
  */
+/**
+ * Cross-chain yield signal for direct use in allocation decisions.
+ * Returns a concrete signal the portfolio manager can act on without AI.
+ */
+export interface CrossChainYieldSignal {
+  signal: "solana_outperforming" | "mantle_competitive" | "no_data";
+  /** How much Solana stable yields exceed Mantle RWA yields (percentage points) */
+  yieldGapPct: number;
+  /** Recommended adjustment to stablecoin allocation (bps): positive = increase stables */
+  stableAdjustmentBps: number;
+  /** Top Solana stable pool APY */
+  solanaStableApy: number;
+  /** Average Mantle RWA yield (USDY baseline) */
+  mantleRwaApy: number;
+  /** Raw data for AI prompt context */
+  contextString: string;
+}
+
+export function getCrossChainYieldSignal(mantleUsdyApy: number = 4.85): CrossChainYieldSignal {
+  const pools = getTopPools(10);
+
+  if (pools.length === 0) {
+    return {
+      signal: "no_data",
+      yieldGapPct: 0,
+      stableAdjustmentBps: 0,
+      solanaStableApy: 0,
+      mantleRwaApy: mantleUsdyApy,
+      contextString: "Byreal cross-chain data unavailable",
+    };
+  }
+
+  // Find best stable pool yield on Solana
+  const stablePools = pools.filter(
+    (p) => p.tokenA === "USDC" || p.tokenB === "USDC" || p.tokenA === "USDT" || p.tokenB === "USDT"
+  );
+  const solanaStableApy = stablePools.length > 0
+    ? Math.max(...stablePools.map((p) => p.apy))
+    : 0;
+
+  const yieldGap = solanaStableApy - mantleUsdyApy;
+
+  // If Solana stable yields beat Mantle by >3%, signal to increase stables on Mantle
+  // (capital preservation — user should move to Solana or at least reduce Mantle risk)
+  let stableAdjustmentBps = 0;
+  let signal: CrossChainYieldSignal["signal"] = "mantle_competitive";
+
+  if (yieldGap > 3) {
+    signal = "solana_outperforming";
+    // Scale: 3% gap = 200bps shift, 6%+ gap = 500bps shift toward stables
+    stableAdjustmentBps = Math.min(500, Math.round(yieldGap * 80));
+  } else if (yieldGap > 1) {
+    signal = "solana_outperforming";
+    stableAdjustmentBps = Math.round(yieldGap * 50);
+  }
+
+  const topOps = pools.slice(0, 3).map((p) =>
+    `${p.pair}: ${p.apy.toFixed(1)}% APY [${p.apy > 50 ? "high" : p.apy > 15 ? "medium" : "low"} risk]`
+  ).join("; ");
+
+  const contextString = signal === "solana_outperforming"
+    ? `Cross-chain: Solana stable yields (${solanaStableApy.toFixed(1)}% APY) outperform Mantle RWA (${mantleUsdyApy}% APY) by ${yieldGap.toFixed(1)}pp. Recommend increasing stable allocation by ${(stableAdjustmentBps/100).toFixed(1)}%. Top pools: ${topOps}`
+    : `Cross-chain: Mantle RWA yields (${mantleUsdyApy}% APY) competitive with Solana stables (${solanaStableApy.toFixed(1)}% APY). Current Mantle strategy optimal. Top Solana pools: ${topOps}`;
+
+  return {
+    signal,
+    yieldGapPct: yieldGap,
+    stableAdjustmentBps,
+    solanaStableApy,
+    mantleRwaApy: mantleUsdyApy,
+    contextString,
+  };
+}
+
 export function getCrossChainOpportunities(): {
   solanaTopYield: number;
   mantleComparison: string;

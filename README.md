@@ -125,7 +125,7 @@ Each agent submits its vote to the **AgentConsensus** contract with a confidence
 | Token | Address | Description |
 |-------|---------|-------------|
 | USDY | `0x5bE26527e817998A7206475496fDE1E68957c5A6` | Ondo US Dollar Yield |
-| mETH | `0xcDA86A272531e8640cD7F1a92c01839911B90bB0` | Mantle Staked ETH |
+| mETH | `0xcDA86A272531e8640cD7F1a92c01839911B90bb0` | Mantle Staked ETH |
 | USDC | `0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9` | Bridged USDC |
 
 For demo purposes, deposit small amounts (0.1 USDC, 0.1 USDY, etc.) - the full flow works at any scale.

@@ -2,10 +2,11 @@ import { config } from "../config";
 import { MarketOutlook } from "./marketIntelligence";
 import { YieldAnalysis } from "./yieldOptimization";
 import { RiskAnalysis } from "./riskManagement";
+import { CrossChainYieldSignal } from "../skills/byrealSkill";
 import OpenAI from "openai";
 
-const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
-const GEMINI_MODEL = "gemini-2.0-flash";
+const AI_BASE_URL = "https://api.groq.com/openai/v1";
+const AI_MODEL = "llama-3.3-70b-versatile";
 
 export type RiskProfile = "conservative" | "moderate" | "aggressive";
 
@@ -48,7 +49,8 @@ export class PortfolioManagerAgent {
     market: MarketOutlook,
     yields: YieldAnalysis,
     risk: RiskAnalysis,
-    currentAllocations: { symbol: string; allocationBps: number }[]
+    currentAllocations: { symbol: string; allocationBps: number }[],
+    crossChainSignal?: CrossChainYieldSignal
   ): Promise<PortfolioDecision> {
     const weights = RISK_PROFILES[this.riskProfile];
     const reasons: string[] = [];
@@ -69,7 +71,19 @@ export class PortfolioManagerAgent {
     const riskAdj = this.riskAdjustment(risk, marketAdj);
 
     // Blend based on profile weights
-    const final = this.blendAllocations(yieldAlloc, marketAdj, riskAdj, weights);
+    let final = this.blendAllocations(yieldAlloc, marketAdj, riskAdj, weights);
+
+    // Apply cross-chain yield intelligence from Byreal
+    if (crossChainSignal && crossChainSignal.signal === "solana_outperforming" && crossChainSignal.stableAdjustmentBps > 0) {
+      final = this.crossChainAdjustment(final, crossChainSignal);
+      reasons.push(
+        `Cross-chain signal: Solana CLMM stable yields (${crossChainSignal.solanaStableApy.toFixed(1)}% APY) exceed Mantle RWA (${crossChainSignal.mantleRwaApy}% APY) by ${crossChainSignal.yieldGapPct.toFixed(1)}pp — shifting +${(crossChainSignal.stableAdjustmentBps/100).toFixed(1)}% toward stablecoins for capital efficiency.`
+      );
+    } else if (crossChainSignal && crossChainSignal.signal === "mantle_competitive") {
+      reasons.push(
+        `Cross-chain: Mantle RWA yields competitive with Solana (${crossChainSignal.solanaStableApy.toFixed(1)}% vs ${crossChainSignal.mantleRwaApy}%) — current Mantle allocation optimal.`
+      );
+    }
 
     // Determine action
     const maxDelta = this.maxAllocationDelta(currentAllocations, final);
@@ -221,6 +235,32 @@ export class PortfolioManagerAgent {
     return max;
   }
 
+  /**
+   * Apply cross-chain yield intelligence from Byreal to allocation.
+   * When Solana yields significantly exceed Mantle, increase stablecoin allocation
+   * (USDY/USDC) at the expense of mETH. This is a capital-preservation signal:
+   * if better yields exist elsewhere, reduce directional risk on Mantle.
+   */
+  private crossChainAdjustment(
+    base: Record<string, number>,
+    signal: CrossChainYieldSignal
+  ): Record<string, number> {
+    const adj = { ...base };
+    const shift = signal.stableAdjustmentBps;
+
+    if (shift <= 0) return adj;
+
+    // Reduce mETH (highest risk), increase USDY (yield-bearing stable)
+    const mETHReduction = Math.min(shift, (adj["mETH"] || 3000) - 1000);
+    adj["mETH"] = (adj["mETH"] || 3000) - mETHReduction;
+
+    // Split the freed allocation: 60% to USDY (yield-bearing), 40% to USDC (pure stable)
+    adj["USDY"] = (adj["USDY"] || 3000) + Math.round(mETHReduction * 0.6);
+    adj["USDC"] = (adj["USDC"] || 3000) + Math.round(mETHReduction * 0.4);
+
+    return this.normalize(adj);
+  }
+
   private emergencyAllocation(
     reasons: string[],
     market: MarketOutlook,
@@ -277,7 +317,7 @@ export class PortfolioManagerAgent {
     try {
       const openai = new OpenAI({
         apiKey: config.openaiApiKey,
-        baseURL: GEMINI_BASE_URL,
+        baseURL: AI_BASE_URL,
       });
 
       const prompt = `You are Sentinel, an autonomous AI portfolio manager on Mantle.
@@ -324,7 +364,7 @@ RULES:
 - Be analytical and reference specific yield rates, momentum, and risk data`;
 
       const response = await openai.chat.completions.create({
-        model: GEMINI_MODEL,
+        model: AI_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
         max_tokens: 300,
@@ -360,14 +400,14 @@ RULES:
         if (aiResult.action === "hold" || aiResult.action === "rebalance") {
           decision.action = aiResult.action;
         }
-        console.log("  [Gemini] AI adjusted allocations and reasoning");
+        console.log("  [AI] AI adjusted allocations and reasoning");
       } else if (aiResult.reasoning && aiResult.reasoning.length > 20) {
         // Reasoning is good but allocations failed validation — keep rule-based allocations
         decision.reasoning = aiResult.reasoning;
-        console.log("  [Gemini] AI reasoning applied (allocations failed validation, using rule-based)");
+        console.log("  [AI] AI reasoning applied (allocations failed validation, using rule-based)");
       }
     } catch (error) {
-      console.warn("  [Gemini] AI enhancement failed, using rule-based:", (error as Error).message);
+      console.warn("  [AI] AI enhancement failed, using rule-based:", (error as Error).message);
     }
 
     return decision;

@@ -30,6 +30,12 @@ export function getManager(): AgentManager | null {
   return manager;
 }
 
+export async function runNow(): Promise<boolean> {
+  if (!manager) return false;
+  await manager.runAllCycles();
+  return true;
+}
+
 // --- Wallet-scoped exports for API / Telegram ---
 
 export function getDecisionHistory(wallet: string): CycleResult[] {

@@ -32,18 +32,19 @@ import {
   createWeeklyRebalance,
   createSafetyShift,
   createYieldChase,
+  runNow,
 } from "./index";
 import { fetchYieldData, fetchPriceData } from "./dataFeeds";
 import { getCrossChainOpportunities } from "./skills/byrealSkill";
 import { verifyLinkToken, getAllLinkedWallets, getWalletForChat, getLinkedChat } from "./linkStore";
 
-// --- Gemini AI for conversational responses ---
-const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai";
-const GEMINI_MODEL = "gemini-2.0-flash";
+// --- AI for conversational responses (Groq - Llama 3.3 70B) ---
+const AI_BASE_URL = "https://api.groq.com/openai/v1";
+const AI_MODEL = "llama-3.3-70b-versatile";
 
-function getGeminiClient(): OpenAI | null {
+function getAIClient(): OpenAI | null {
   if (!config.openaiApiKey) return null;
-  return new OpenAI({ apiKey: config.openaiApiKey, baseURL: GEMINI_BASE_URL });
+  return new OpenAI({ apiKey: config.openaiApiKey, baseURL: AI_BASE_URL });
 }
 
 /**
@@ -116,7 +117,7 @@ function buildContext(wallet: string): string {
 }
 
 async function askAI(wallet: string, userMessage: string): Promise<string> {
-  const client = getGeminiClient();
+  const client = getAIClient();
   if (!client) return "";
 
   const context = buildContext(wallet);
@@ -139,7 +140,7 @@ IMPORTANT RULES:
 
   try {
     const response = await client.chat.completions.create({
-      model: GEMINI_MODEL,
+      model: AI_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -242,6 +243,11 @@ export function startTelegramBot(token: string) {
   bot.onText(/\/byreal/, (msg) => sendByreal(bot, msg.chat.id));
   bot.onText(/\/approve/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) handleApproval(bot, msg.chat.id, w, true); });
   bot.onText(/\/reject/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) handleApproval(bot, msg.chat.id, w, false); });
+  bot.onText(/\/runnow/, async (msg) => {
+    bot.sendMessage(msg.chat.id, "⏳ Triggering agent cycle...");
+    const ok = await runNow();
+    bot.sendMessage(msg.chat.id, ok ? "✅ Cycle complete." : "❌ Agent not running.");
+  });
 
   bot.onText(/\/setrisk/, (msg) => {
     const w = requireWallet(bot, msg.chat.id);

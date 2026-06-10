@@ -12,7 +12,7 @@ import {
 } from "./agents/portfolioManager";
 import { calculateBlendedYield } from "./strategies/yieldOptimizer";
 import { checkTrade, getRules, setRules, enableAutonomous, formatRules, getTradesToday, AutonomousRules } from "./autonomousRules";
-import { getCrossChainOpportunities } from "./skills/byrealSkill";
+import { getCrossChainOpportunities, getCrossChainYieldSignal, CrossChainYieldSignal } from "./skills/byrealSkill";
 import { notifyDecision, notifyApprovalNeeded, notifyUserByWallet } from "./telegram";
 import { logActivity } from "./activityLog";
 import { getReadyPlans, markExecuted, getPlans, createPlan, removePlan, pausePlan, resumePlan, formatInterval, DcaPlan } from "./dcaManager";
@@ -93,11 +93,9 @@ export class AgentManager {
 
     this.running = true;
     console.log(`[AgentManager] ${this.userContexts.size} user(s) loaded. Starting cycles.`);
+    console.log(`[AgentManager] First cycle in ${config.intervalMs / 1000}s. Use /runnow in Telegram to trigger immediately.`);
 
-    // Run first cycle for all users
-    await this.runAllCycles();
-
-    // Start interval
+    // Start interval — NO immediate first cycle (saves gas on restarts)
     this.intervalHandle = setInterval(async () => {
       try {
         await this.runAllCycles();
@@ -179,7 +177,7 @@ export class AgentManager {
   /**
    * Run a full cycle for all users. Market data is fetched once and shared.
    */
-  private async runAllCycles(): Promise<void> {
+  async runAllCycles(): Promise<void> {
     if (this.userContexts.size === 0) return;
 
     // Fetch shared market data once
@@ -217,49 +215,63 @@ export class AgentManager {
     const yields = await yieldAgent.analyze(snapshot.yields);
     const risk = await riskAgent.analyze(snapshot.prices, snapshot.risk, ctx.currentAllocations);
 
-    // Cross-chain context
+    // Cross-chain yield intelligence from Byreal
+    let crossChainSignal: CrossChainYieldSignal | undefined;
     let crossChainContext = "";
     try {
-      const crossChain = getCrossChainOpportunities();
-      if (crossChain.opportunities.length > 0) {
-        const topOps = crossChain.opportunities.slice(0, 3).map(o =>
-          `${o.pool}: ${o.apy.toFixed(1)}% APY [${o.risk} risk]`
-        ).join("; ");
-        crossChainContext = `Cross-chain: Solana top yield ${crossChain.solanaTopYield.toFixed(1)}% APY. ${crossChain.mantleComparison}. Top pools: ${topOps}`;
-      }
-    } catch {}
+      // Get structured signal for rule-based allocation adjustment
+      const usdyApy = yields.rankings.find(r => r.asset === "USDY")?.apy || 4.85;
+      crossChainSignal = getCrossChainYieldSignal(usdyApy);
+      crossChainContext = crossChainSignal.contextString;
 
-    // Portfolio decision
-    let decision = await ctx.portfolioAgent.decide(market, yields, risk, ctx.currentAllocations);
+      if (crossChainSignal.signal === "solana_outperforming") {
+        console.log(`  [Byreal] Solana yields outperform Mantle by ${crossChainSignal.yieldGapPct.toFixed(1)}pp — adjusting stables +${(crossChainSignal.stableAdjustmentBps/100).toFixed(1)}%`);
+      } else if (crossChainSignal.signal === "mantle_competitive") {
+        console.log(`  [Byreal] Mantle yields competitive with Solana — no cross-chain adjustment`);
+      }
+    } catch (e) {
+      // Cross-chain data unavailable — non-critical, continue without it
+    }
+
+    // Portfolio decision — cross-chain signal directly influences rule-based allocation
+    let decision = await ctx.portfolioAgent.decide(market, yields, risk, ctx.currentAllocations, crossChainSignal);
     decision = await ctx.portfolioAgent.enhanceWithAI(decision, market, yields, risk, ctx.currentAllocations, crossChainContext);
 
     console.log(`  Action: ${decision.action} | Confidence: ${decision.confidence}% | Risk: ${decision.riskLevel}`);
 
-    // Consensus
-    const roundId = await ctx.executor.startConsensusRound();
-    if (roundId) {
-      const marketAlloc = computeMarketVote(market);
-      const yieldAlloc = computeYieldVote(yields);
-      const riskAlloc = computeRiskVote(risk);
-      const portfolioAlloc = decision.newAllocations.map((a) => a.allocationBps);
+    // Get actual portfolio value
+    const mETHPrice = snapshot.prices?.find(p => p.asset === "mETH")?.priceUSD;
+    const portfolioValueUSD = await ctx.executor.getPortfolioValueUSD(mETHPrice);
 
-      await ctx.executor.submitVote(roundId, 0, marketAlloc, market.confidence, `Market: ${market.outlook}`);
-      await ctx.executor.submitVote(roundId, 1, yieldAlloc, 70, `Best yield: ${yields.bestYieldAsset}`);
-      await ctx.executor.submitVote(roundId, 2, riskAlloc, Math.max(30, 100 - risk.riskScore * 10), `Risk: ${risk.riskScore}/10`);
-      await ctx.executor.submitVote(roundId, 3, portfolioAlloc, decision.confidence, `Portfolio: ${decision.action}`);
-
-      const consensusResult = await ctx.executor.resolveConsensus(roundId);
-      if (consensusResult?.success) {
-        for (let i = 0; i < decision.newAllocations.length && i < consensusResult.allocations.length; i++) {
-          decision.newAllocations[i].allocationBps = consensusResult.allocations[i];
-        }
-      }
-    }
-
-    // Commit-reveal
+    // On-chain consensus + commit-reveal ONLY when rebalancing (saves gas)
     let commitData: { commitId: number; nonce: string } | null = null;
     if (decision.action !== "hold") {
-      commitData = await ctx.executor.commitDecision(decision, 100000);
+      // Fund sub-agents and run on-chain consensus
+      await ctx.executor.fundSubAgents();
+      const roundId = await ctx.executor.startConsensusRound();
+      if (roundId) {
+        const marketAlloc = computeMarketVote(market);
+        const yieldAlloc = computeYieldVote(yields);
+        const riskAlloc = computeRiskVote(risk);
+        const portfolioAlloc = decision.newAllocations.map((a) => a.allocationBps);
+
+        await ctx.executor.submitVote(roundId, 0, marketAlloc, market.confidence, `Market: ${market.outlook}`);
+        await ctx.executor.submitVote(roundId, 1, yieldAlloc, 70, `Best yield: ${yields.bestYieldAsset}`);
+        await ctx.executor.submitVote(roundId, 2, riskAlloc, Math.max(30, 100 - risk.riskScore * 10), `Risk: ${risk.riskScore}/10`);
+        await ctx.executor.submitVote(roundId, 3, portfolioAlloc, decision.confidence, `Portfolio: ${decision.action}`);
+
+        const consensusResult = await ctx.executor.resolveConsensus(roundId);
+        if (consensusResult?.success) {
+          for (let i = 0; i < decision.newAllocations.length && i < consensusResult.allocations.length; i++) {
+            decision.newAllocations[i].allocationBps = consensusResult.allocations[i];
+          }
+        }
+      }
+
+      // Commit-reveal: commit hash before execution
+      commitData = await ctx.executor.commitDecision(decision, portfolioValueUSD);
+    } else {
+      console.log(`  [Gas] Hold decision — skipping on-chain ops (0 gas used)`);
     }
 
     // Autonomous rules check
@@ -275,12 +287,12 @@ export class AgentManager {
       if (decision.action !== "hold") {
         txHash = await ctx.executor.executeRebalance(decision);
         const oldAlloc = ctx.currentAllocations.map((a) => a.allocationBps);
-        await ctx.executor.logDecisionOnChain(decision, oldAlloc, 100000, commitData);
+        await ctx.executor.logDecisionOnChain(decision, oldAlloc, portfolioValueUSD, commitData);
         ctx.totalDecisions++;
         const blended = calculateBlendedYield(snapshot.yields, ctx.currentAllocations);
         ctx.cumulativeROIBps += Math.round((blended * 100) / 365);
         await ctx.executor.updateIdentity(ctx.totalDecisions, ctx.cumulativeROIBps);
-        await ctx.executor.recordDecisionOutcome(100000, decision.confidence);
+        await ctx.executor.recordDecisionOutcome(portfolioValueUSD, decision.confidence);
       } else {
         ctx.totalDecisions++;
       }
@@ -437,10 +449,12 @@ export class AgentManager {
     const decision = ctx.pendingApproval;
     let txHash: string | null = null;
 
+    const portfolioValueUSD = await ctx.executor.getPortfolioValueUSD();
+
     if (decision.action !== "hold") {
       txHash = await ctx.executor.executeRebalance(decision);
       const oldAlloc = ctx.currentAllocations.map((a) => a.allocationBps);
-      await ctx.executor.logDecisionOnChain(decision, oldAlloc, 100000);
+      await ctx.executor.logDecisionOnChain(decision, oldAlloc, portfolioValueUSD);
     }
 
     logActivity(wallet, {

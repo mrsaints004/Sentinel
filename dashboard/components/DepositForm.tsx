@@ -6,7 +6,7 @@ const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "";
 
 const TOKENS = [
   { symbol: "USDY", name: "Ondo USDY", address: process.env.NEXT_PUBLIC_USDY_ADDRESS || "0x5bE26527e817998A7206475496fDE1E68957c5A6", decimals: 18 },
-  { symbol: "mETH", name: "Mantle Staked ETH", address: process.env.NEXT_PUBLIC_METH_ADDRESS || "0xcDA86A272531e8640cD7F1a92c01839911B90bB0", decimals: 18 },
+  { symbol: "mETH", name: "Mantle Staked ETH", address: process.env.NEXT_PUBLIC_METH_ADDRESS || "0xcDA86A272531e8640cD7F1a92c01839911B90bb0", decimals: 18 },
   { symbol: "USDC", name: "USD Coin", address: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9", decimals: 6 },
 ];
 

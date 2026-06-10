@@ -29,7 +29,7 @@ export const config = {
   // Real token addresses on Mantle Mainnet
   assets: {
     USDY: process.env.USDY_ADDRESS || "0x5bE26527e817998A7206475496fDE1E68957c5A6",
-    mETH: process.env.METH_ADDRESS || "0xcDA86A272531e8640cD7F1a92c01839911B90bB0",
+    mETH: process.env.METH_ADDRESS || "0xcDA86A272531e8640cD7F1a92c01839911B90bb0",
     USDC: process.env.USDC_ADDRESS || "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9",
   },
 

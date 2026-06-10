@@ -10,7 +10,7 @@ import { ethers } from "hardhat";
 // Real Mantle Mainnet token addresses
 const TOKENS = {
   USDY: "0x5bE26527e817998A7206475496fDE1E68957c5A6",
-  mETH: "0xcDA86A272531e8640cD7F1a92c01839911B90bB0",
+  mETH: "0xcDA86A272531e8640cD7F1a92c01839911B90bb0",
   USDC: "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9",
 };
 

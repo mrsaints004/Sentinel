@@ -11,7 +11,7 @@ import { ethers } from "hardhat";
 // Real Mantle Mainnet token addresses
 const TOKENS = {
   USDY: "0x5bE26527e817998A7206475496fDE1E68957c5A6",  // Ondo USDY
-  mETH: "0xcDA86A272531e8640cD7F1a92c01839911B90bB0",  // Mantle Staked ETH
+  mETH: "0xcDA86A272531e8640cD7F1a92c01839911B90bb0",  // Mantle Staked ETH
   USDC: "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9",  // Bridged USDC
   WETH: "0xdEAddEaDdeadDEadDEADDEAddEADDEAddead1111",  // Wrapped ETH
 };
@@ -56,13 +56,13 @@ async function main() {
   console.log(`DecisionLogger: ${loggerAddr}`);
   console.log(`  ${EXPLORER}/address/${loggerAddr}`);
 
-  // 3. Deploy AgentIdentity (with reputation metrics)
-  console.log("\n--- Deploying AgentIdentity (reputation tracking enabled) ---");
+  // 3. Deploy AgentIdentity (ERC-8004 Trustless Agent Standard)
+  console.log("\n--- Deploying AgentIdentity (ERC-8004 compliant) ---");
   const Identity = await ethers.getContractFactory("AgentIdentity");
   const identity = await Identity.deploy();
   await identity.waitForDeployment();
   const identityAddr = await identity.getAddress();
-  console.log(`AgentIdentity: ${identityAddr}`);
+  console.log(`AgentIdentity (ERC-8004): ${identityAddr}`);
   console.log(`  ${EXPLORER}/address/${identityAddr}`);
 
   // 4. Deploy AgentConsensus (multi-agent voting)
@@ -75,7 +75,23 @@ async function main() {
   console.log(`AgentConsensus: ${consensusAddr}`);
   console.log(`  ${EXPLORER}/address/${consensusAddr}`);
 
-  // 5. Configure Vault with real tokens
+  // 5. Deploy VaultFactory (multi-user vault creation)
+  console.log("\n--- Deploying VaultFactory (multi-user support) ---");
+  const Factory = await ethers.getContractFactory("VaultFactory");
+  const factory = await Factory.deploy(deployer.address);
+  await factory.waitForDeployment();
+  const factoryAddr = await factory.getAddress();
+  console.log(`VaultFactory: ${factoryAddr}`);
+  console.log(`  ${EXPLORER}/address/${factoryAddr}`);
+
+  // Configure factory with default assets
+  await (await factory.setDefaultAssets(
+    [TOKENS.USDY, TOKENS.mETH, TOKENS.USDC],
+    ["USDY", "mETH", "USDC"]
+  )).wait();
+  console.log("Factory configured with default assets (USDY, mETH, USDC)");
+
+  // 6. Configure Vault with real tokens
   console.log("\n--- Configuring Vault with real Mantle tokens ---");
 
   await (await vault.addSupportedAsset(TOKENS.USDY, "USDY")).wait();
@@ -116,12 +132,13 @@ async function main() {
 
   // 8. Register sub-agent wallets in AgentConsensus
   console.log("\n--- Registering sub-agents for consensus voting ---");
-  // Derive sub-agent addresses (same logic as executor.ts)
+  // Derive sub-agent addresses using the PRIVATE KEY (must match executor.ts logic)
+  const privateKey = process.env.PRIVATE_KEY || "";
   const roles = ["market", "yield", "risk", "portfolio"];
   const roleEnums = [0, 1, 2, 3]; // Market, Yield, Risk, Portfolio
   for (let i = 0; i < roles.length; i++) {
     const derivedKey = ethers.keccak256(
-      ethers.solidityPacked(["bytes32", "string"], [deployer.address, roles[i]])
+      ethers.solidityPacked(["bytes32", "string"], [privateKey, roles[i]])
     );
     const subWallet = new ethers.Wallet(derivedKey);
     await (await consensus.registerAgent(subWallet.address, roleEnums[i])).wait();
@@ -152,6 +169,7 @@ async function main() {
   console.log(`  LOGGER_ADDRESS=${loggerAddr}`);
   console.log(`  IDENTITY_ADDRESS=${identityAddr}`);
   console.log(`  CONSENSUS_ADDRESS=${consensusAddr}`);
+  console.log(`  FACTORY_ADDRESS=${factoryAddr}`);
   console.log(`  SWAP_ROUTER_ADDRESS=${adapterAddr}`);
   console.log(`  MERCHANT_MOE_ADAPTER=${adapterAddr}`);
   console.log("\nReal Tokens (Mantle Mainnet):");
@@ -161,8 +179,9 @@ async function main() {
   console.log("\nExplorer Links:");
   console.log(`  Vault:     ${EXPLORER}/address/${vaultAddr}`);
   console.log(`  Logger:    ${EXPLORER}/address/${loggerAddr}`);
-  console.log(`  Identity:  ${EXPLORER}/address/${identityAddr}`);
+  console.log(`  Identity:  ${EXPLORER}/address/${identityAddr} (ERC-8004)`);
   console.log(`  Consensus: ${EXPLORER}/address/${consensusAddr}`);
+  console.log(`  Factory:   ${EXPLORER}/address/${factoryAddr}`);
   console.log(`  Adapter:   ${EXPLORER}/address/${adapterAddr}`);
   console.log(`  Agent:     ${EXPLORER}/address/${deployer.address}`);
   console.log("\n  Update your .env file with the addresses above.");
