@@ -9,7 +9,7 @@ interface LogEntry {
   timestamp: number;
 }
 
-export default function AITerminal() {
+export default function AITerminal({ wallet }: { wallet?: string }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [queue, setQueue] = useState<{ type: string; message: string }[]>([]);
@@ -52,7 +52,8 @@ export default function AITerminal() {
     setIsRunning(true);
 
     try {
-      const res = await fetch("/api/agent-cycle", { method: "POST" });
+      const url = wallet ? `/api/agent-cycle?wallet=${wallet}` : "/api/agent-cycle";
+      const res = await fetch(url, { method: "POST" });
       const data = await res.json();
 
       if (data.steps && data.steps.length > 0) {

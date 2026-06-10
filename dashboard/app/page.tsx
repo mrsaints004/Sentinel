@@ -194,7 +194,7 @@ export default function Dashboard() {
               <div className="w-5 h-5 rounded bg-s-accent flex items-center justify-center">
                 <span className="text-[9px] font-black text-white">S</span>
               </div>
-              <span className="text-xs text-s-text-muted">Built on Mantle · Powered by Gemini AI · On-chain Agent Identity NFTs</span>
+              <span className="text-xs text-s-text-muted">Built on Mantle · Powered by Llama 3.3 70B · On-chain Agent Identity NFTs</span>
             </div>
             <div className="flex items-center gap-3 text-[11px] text-s-text-muted">
               <a href="https://t.me/SentinelTreasuryBot" target="_blank" rel="noopener noreferrer" className="hover:text-s-accent transition-colors">Telegram</a>
@@ -358,7 +358,7 @@ export default function Dashboard() {
 
         {/* AI Terminal */}
         <div className="mb-6">
-          <AITerminal />
+          <AITerminal wallet={wallet.address || undefined} />
         </div>
 
         {/* Main grid */}
@@ -430,7 +430,7 @@ export default function Dashboard() {
             <div className="w-5 h-5 rounded bg-s-accent flex items-center justify-center">
               <span className="text-[9px] font-black text-white">S</span>
             </div>
-            <span className="text-xs text-s-text-muted">Built on Mantle · Powered by Gemini AI · On-chain Agent Identity NFTs</span>
+            <span className="text-xs text-s-text-muted">Built on Mantle · Powered by Llama 3.3 70B · On-chain Agent Identity NFTs</span>
           </div>
           <div className="flex items-center gap-3 text-[11px] text-s-text-muted">
             <a href="https://t.me/SentinelTreasuryBot" target="_blank" rel="noopener noreferrer" className="hover:text-s-accent transition-colors">Telegram</a>

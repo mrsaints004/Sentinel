@@ -26,7 +26,7 @@ export default function HowItWorks() {
       {isOpen && (
         <div className="mt-4 space-y-3">
           <p className="text-xs text-s-text-muted">
-            Every 5 minutes, 4 AI agents collaborate:
+            Every cycle, 4 AI agents collaborate:
           </p>
           <div className="space-y-2.5">
             <div className="flex items-start gap-2.5">

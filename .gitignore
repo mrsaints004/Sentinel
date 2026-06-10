@@ -37,3 +37,14 @@ yarn-error.log*
 # Activity/state files
 .activity-log.json
 .telegram-links.json
+
+# Per-user data (wallets, DCA plans, activity logs)
+data/
+
+# Scheduled tasks & DCA state
+.dca-plans.json
+.scheduled-tasks.json
+.autonomous-rules.json
+
+# Hardhat deployment cache
+deployments/
