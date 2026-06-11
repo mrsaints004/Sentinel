@@ -21,7 +21,6 @@ export async function GET() {
       id: Number(tokenId),
       name: metadata.agentName,
       strategy: metadata.strategyType,
-      roi: Number(metadata.cumulativeROIBps) / 100,
       decisions: Number(metadata.totalDecisions),
       address: AGENT_ADDRESS,
       isYou: true,

@@ -99,7 +99,6 @@ function formatTimeUntil(timestamp: number): string {
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function AgentStatus({ agent }: { agent: AgentInfo }) {
-  const roi = (agent.cumulativeROIBps / 100).toFixed(2);
   const rep = agent.reputation;
 
   return (
@@ -128,16 +127,10 @@ export default function AgentStatus({ agent }: { agent: AgentInfo }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="text-center p-3 rounded-xl bg-s-bg border border-s-border">
           <div className="stat-value">{agent.totalDecisions}</div>
           <div className="stat-label">Decisions</div>
-        </div>
-        <div className="text-center p-3 rounded-xl bg-s-bg border border-s-border">
-          <div className={`stat-value ${Number(roi) >= 0 ? "text-s-green" : "text-s-red"}`}>
-            {Number(roi) >= 0 ? "+" : ""}{roi}%
-          </div>
-          <div className="stat-label">ROI</div>
         </div>
         <div className="text-center p-3 rounded-xl bg-s-bg border border-s-border">
           <div className="stat-value">{formatUptime(agent.uptime)}</div>

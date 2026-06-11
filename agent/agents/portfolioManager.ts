@@ -2,7 +2,6 @@ import { config } from "../config";
 import { MarketOutlook } from "./marketIntelligence";
 import { YieldAnalysis } from "./yieldOptimization";
 import { RiskAnalysis } from "./riskManagement";
-import { CrossChainYieldSignal } from "../skills/byrealSkill";
 import OpenAI from "openai";
 
 const AI_BASE_URL = "https://api.groq.com/openai/v1";
@@ -50,7 +49,6 @@ export class PortfolioManagerAgent {
     yields: YieldAnalysis,
     risk: RiskAnalysis,
     currentAllocations: { symbol: string; allocationBps: number }[],
-    crossChainSignal?: CrossChainYieldSignal
   ): Promise<PortfolioDecision> {
     const weights = RISK_PROFILES[this.riskProfile];
     const reasons: string[] = [];
@@ -71,19 +69,7 @@ export class PortfolioManagerAgent {
     const riskAdj = this.riskAdjustment(risk, marketAdj);
 
     // Blend based on profile weights
-    let final = this.blendAllocations(yieldAlloc, marketAdj, riskAdj, weights);
-
-    // Apply cross-chain yield intelligence from Byreal
-    if (crossChainSignal && crossChainSignal.signal === "solana_outperforming" && crossChainSignal.stableAdjustmentBps > 0) {
-      final = this.crossChainAdjustment(final, crossChainSignal);
-      reasons.push(
-        `Cross-chain signal: Solana CLMM stable yields (${crossChainSignal.solanaStableApy.toFixed(1)}% APY) exceed Mantle RWA (${crossChainSignal.mantleRwaApy}% APY) by ${crossChainSignal.yieldGapPct.toFixed(1)}pp — shifting +${(crossChainSignal.stableAdjustmentBps/100).toFixed(1)}% toward stablecoins for capital efficiency.`
-      );
-    } else if (crossChainSignal && crossChainSignal.signal === "mantle_competitive") {
-      reasons.push(
-        `Cross-chain: Mantle RWA yields competitive with Solana (${crossChainSignal.solanaStableApy.toFixed(1)}% vs ${crossChainSignal.mantleRwaApy}%) — current Mantle allocation optimal.`
-      );
-    }
+    const final = this.blendAllocations(yieldAlloc, marketAdj, riskAdj, weights);
 
     // Determine action
     const maxDelta = this.maxAllocationDelta(currentAllocations, final);
@@ -235,32 +221,6 @@ export class PortfolioManagerAgent {
     return max;
   }
 
-  /**
-   * Apply cross-chain yield intelligence from Byreal to allocation.
-   * When Solana yields significantly exceed Mantle, increase stablecoin allocation
-   * (USDY/USDC) at the expense of mETH. This is a capital-preservation signal:
-   * if better yields exist elsewhere, reduce directional risk on Mantle.
-   */
-  private crossChainAdjustment(
-    base: Record<string, number>,
-    signal: CrossChainYieldSignal
-  ): Record<string, number> {
-    const adj = { ...base };
-    const shift = signal.stableAdjustmentBps;
-
-    if (shift <= 0) return adj;
-
-    // Reduce mETH (highest risk), increase USDY (yield-bearing stable)
-    const mETHReduction = Math.min(shift, (adj["mETH"] || 3000) - 1000);
-    adj["mETH"] = (adj["mETH"] || 3000) - mETHReduction;
-
-    // Split the freed allocation: 60% to USDY (yield-bearing), 40% to USDC (pure stable)
-    adj["USDY"] = (adj["USDY"] || 3000) + Math.round(mETHReduction * 0.6);
-    adj["USDC"] = (adj["USDC"] || 3000) + Math.round(mETHReduction * 0.4);
-
-    return this.normalize(adj);
-  }
-
   private emergencyAllocation(
     reasons: string[],
     market: MarketOutlook,
@@ -310,7 +270,6 @@ export class PortfolioManagerAgent {
     yields: YieldAnalysis,
     risk: RiskAnalysis,
     currentAllocations: { symbol: string; allocationBps: number }[],
-    crossChainContext: string = ""
   ): Promise<PortfolioDecision> {
     if (!config.openaiApiKey) return decision;
 
@@ -346,7 +305,6 @@ RISK ASSESSMENT:
 RULE-BASED SUGGESTION:
 - Action: ${decision.action}
 - Allocations: ${decision.newAllocations.map(a => `${a.symbol}: ${(a.allocationBps/100).toFixed(1)}%`).join(", ")}
-${crossChainContext ? `\nCROSS-CHAIN INTELLIGENCE (Byreal Agent Skills — Solana CLMM):\n${crossChainContext}\nUse this to judge if Mantle yields are competitive. If Solana yields are significantly higher for similar risk, mention it in reasoning.\n` : ""}
 You may adjust the allocations if you see a better opportunity. Respond with ONLY valid JSON:
 {
   "action": "rebalance" | "hold",

@@ -5,13 +5,11 @@ import PortfolioChart from "@/components/PortfolioChart";
 import DecisionLog from "@/components/DecisionLog";
 import YieldComparison from "@/components/YieldComparison";
 import AgentStatus from "@/components/AgentStatus";
-import RebalanceHistory from "@/components/RebalanceHistory";
 import AITerminal from "@/components/AITerminal";
 import CreateTreasury from "@/components/CreateTreasury";
 import AgentLeaderboard from "@/components/AgentLeaderboard";
 import PendingApproval from "@/components/PendingApproval";
 import AutonomousSettings from "@/components/AutonomousSettings";
-import ByrealSkills from "@/components/ByrealSkills";
 import DepositForm from "@/components/DepositForm";
 import TelegramConnect from "@/components/TelegramConnect";
 import HowItWorks from "@/components/HowItWorks";
@@ -35,12 +33,10 @@ interface AgentInfo {
   agentName: string;
   strategyType: string;
   totalDecisions: number;
-  cumulativeROIBps: number;
   isRunning: boolean;
   uptime: number;
   walletAddress: string;
   lastActive: string;
-  portfolioHistory: { timestamp: number; value: number }[];
 }
 
 /**
@@ -320,7 +316,7 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="text-lg font-bold text-s-teal">{portfolio.blendedYield.toFixed(2)}%</div>
-              <div className="text-[10px] text-s-text-muted uppercase tracking-wider">Blended APY</div>
+              <div className="text-[10px] text-s-text-muted uppercase tracking-wider">Est. APY</div>
             </div>
           </div>
 
@@ -344,9 +340,9 @@ export default function Dashboard() {
             </div>
             <div>
               <div className="text-lg font-bold text-s-green">
-                +{(agent.cumulativeROIBps / 100).toFixed(2)}%
+                {agent.totalDecisions}
               </div>
-              <div className="text-[10px] text-s-text-muted uppercase tracking-wider">Total ROI</div>
+              <div className="text-[10px] text-s-text-muted uppercase tracking-wider">Decisions</div>
             </div>
           </div>
         </div>
@@ -370,7 +366,6 @@ export default function Dashboard() {
               totalValueUSD={portfolio.totalValueUSD}
               blendedYield={portfolio.blendedYield}
             />
-            <RebalanceHistory history={agent.portfolioHistory} />
             <DecisionLog decisions={decisions} />
           </div>
 
@@ -383,7 +378,6 @@ export default function Dashboard() {
             />
 
             <HowItWorks />
-            <ByrealSkills />
             <AutonomousSettings />
             <TelegramConnect />
             <DepositForm isConnected={wallet.isConnected} onConnect={wallet.connect} />

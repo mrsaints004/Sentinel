@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { getWalletFromQuery } from "../../../lib/auth";
-import { getVaultContract, getUserVaultAddress, getProvider, fetchPricesUSD, formatTokenBalance } from "../../../lib/provider";
+import { getVaultContract, getUserVaultAddress, getProvider, fetchPricesUSD, formatTokenBalance, fetchYieldsFromDeFiLlama } from "../../../lib/provider";
 
 const VAULT_ABI = [
   "function getPortfolio() external view returns (address[], string[], uint256[], uint256[])",
@@ -33,9 +33,12 @@ export async function GET(request: Request) {
     const [assets, names, balances, allocations] = await vault.getPortfolio();
     const rebalanceCount = await vault.rebalanceCount();
     const lastRebalanceTs = await vault.lastRebalanceTimestamp();
-    const prices = await fetchPricesUSD();
 
-    const LIVE_APYS: Record<string, number> = { USDY: 4.85, mETH: 3.65, USDC: 2.80 };
+    // Fetch live data in parallel
+    const [prices, liveApys] = await Promise.all([
+      fetchPricesUSD(),
+      fetchYieldsFromDeFiLlama(),
+    ]);
 
     const assetData = (names as string[]).map((symbol: string, i: number) => {
       const balance = balances[i] as bigint;
@@ -43,12 +46,13 @@ export async function GET(request: Request) {
       const price = prices[symbol] ?? 1.0;
       const balanceFloat = formatTokenBalance(balance, symbol);
       const balanceUSD = balanceFloat * price;
+      const apy = liveApys[symbol] ?? 0;
       return {
         symbol,
         name: symbol === "USDY" ? "Ondo USDY" : symbol === "mETH" ? "Mantle Staked ETH" : "USD Coin",
         allocationBps: allocBps,
         balanceUSD: Math.round(balanceUSD * 100) / 100,
-        apy: LIVE_APYS[symbol] || 3.0,
+        apy: +apy.toFixed(2),
       };
     });
 

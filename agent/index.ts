@@ -36,6 +36,17 @@ export async function runNow(): Promise<boolean> {
   return true;
 }
 
+export async function getPortfolioValue(wallet: string): Promise<number> {
+  if (!manager) return 0;
+  const ctx = manager.getContext(wallet);
+  if (!ctx) return 0;
+  try {
+    return await ctx.executor.getPortfolioValueUSD();
+  } catch {
+    return 0;
+  }
+}
+
 // --- Wallet-scoped exports for API / Telegram ---
 
 export function getDecisionHistory(wallet: string): CycleResult[] {

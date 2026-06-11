@@ -395,7 +395,7 @@ export class Executor {
    * Fund sub-agent wallets with MNT for gas if their balance is low.
    * Called automatically before consensus voting.
    */
-  async fundSubAgents(minBalance = ethers.parseEther("0.02"), topUp = ethers.parseEther("0.05")): Promise<void> {
+  async fundSubAgents(minBalance = ethers.parseEther("0.05"), topUp = ethers.parseEther("0.1")): Promise<void> {
     for (let i = 0; i < this.subAgentWallets.length; i++) {
       const sub = this.subAgentWallets[i];
       const balance = await this.provider.getBalance(sub.address);
@@ -403,7 +403,7 @@ export class Executor {
         try {
           const tx = await this.wallet.sendTransaction({ to: sub.address, value: topUp });
           await tx.wait();
-          console.log(`[Funding] Sent 0.05 MNT to sub-agent ${i} (${sub.address.slice(0, 10)}...)`);
+          console.log(`[Funding] Sent 0.1 MNT to sub-agent ${i} (${sub.address.slice(0, 10)}...)`);
         } catch (e: any) {
           console.error(`[Funding] Failed to fund sub-agent ${i}:`, e.shortMessage || e.message);
         }

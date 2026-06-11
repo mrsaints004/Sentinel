@@ -33,9 +33,9 @@ import {
   createSafetyShift,
   createYieldChase,
   runNow,
+  getPortfolioValue,
 } from "./index";
 import { fetchYieldData, fetchPriceData } from "./dataFeeds";
-import { getCrossChainOpportunities } from "./skills/byrealSkill";
 import { verifyLinkToken, getAllLinkedWallets, getWalletForChat, getLinkedChat } from "./linkStore";
 
 // --- AI for conversational responses (Groq - Llama 3.3 70B) ---
@@ -166,7 +166,6 @@ function detectIntent(text: string): string | null {
   if (lower.match(/\b(risk|danger|safe|exposure|drawdown)\b/)) return "risk";
   if (lower.match(/\b(last decision|why did|explain|reasoning|last trade)\b/)) return "lastdecision";
   if (lower.match(/\b(agents?|sub.?agents?|market agent|yield agent|risk agent)\b/)) return "agents";
-  if (lower.match(/\b(cross.?chain|solana|byreal|other chains)\b/)) return "byreal";
   if (lower.match(/\b(dca|dollar.?cost|recurring buy|auto.?buy)\b/)) return "dca";
   if (lower.match(/\b(plan|schedule|task|rebalance every|weekly|if .* drops|conditional)\b/)) return "plans";
   if (lower.match(/\b(help|commands|what can you)\b/)) return "help";
@@ -240,7 +239,6 @@ export function startTelegramBot(token: string) {
   bot.onText(/\/lastdecision/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) sendLastDecision(bot, msg.chat.id, w); });
   bot.onText(/\/agents/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) sendAgents(bot, msg.chat.id, w); });
   bot.onText(/\/autonomous/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) sendAutonomous(bot, msg.chat.id, w); });
-  bot.onText(/\/byreal/, (msg) => sendByreal(bot, msg.chat.id));
   bot.onText(/\/approve/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) handleApproval(bot, msg.chat.id, w, true); });
   bot.onText(/\/reject/, (msg) => { const w = requireWallet(bot, msg.chat.id); if (w) handleApproval(bot, msg.chat.id, w, false); });
   bot.onText(/\/runnow/, async (msg) => {
@@ -302,7 +300,6 @@ export function startTelegramBot(token: string) {
         `/vault \u2014 Your vault info\n` +
         `/approve \u2014 Approve pending trade\n` +
         `/reject \u2014 Reject pending trade\n` +
-        `/byreal \u2014 Cross-chain yields\n\n` +
         `But honestly, just ask me anything in your own words.`,
       { parse_mode: "Markdown" }
     );
@@ -510,7 +507,6 @@ export function startTelegramBot(token: string) {
       if (intent === "lastdecision") { sendLastDecision(bot, chatId, wallet); return; }
       if (intent === "agents") { sendAgents(bot, chatId, wallet); return; }
       if (intent === "autonomous") { sendAutonomous(bot, chatId, wallet); return; }
-      if (intent === "byreal") { sendByreal(bot, chatId); return; }
       if (intent === "dca") { sendDca(bot, chatId, wallet); return; }
       if (intent === "plans") { sendPlans(bot, chatId, wallet); return; }
 
@@ -590,7 +586,7 @@ export function startTelegramBot(token: string) {
     try { yields = await fetchYieldData(); } catch {}
 
     const roi = (stats.cumulativeROIBps / 100).toFixed(2);
-    const totalValueUSD = 100000 * (1 + stats.cumulativeROIBps / 10000);
+    const totalValueUSD = await getPortfolioValue(wallet);
 
     let allocText = "";
     allocations.forEach((a) => {
@@ -691,47 +687,39 @@ export function startTelegramBot(token: string) {
   function sendAutonomous(b: TelegramBot, chatId: number, wallet: string) {
     const status = getAutonomousStatus(wallet);
     let text = `\u26A1 *Autonomous Trading*\n\n`;
-    text += `*Status:* ${status.enabled ? "\u{1F7E2} ON" : "\u{1F534} OFF"}\n`;
-    text += `*Trades today:* ${status.tradesToday}/${status.maxDailyTrades}\n`;
-    text += `*Max change/asset:* ${(status.maxPortfolioChangeBps / 100).toFixed(0)}%\n`;
-    text += `*Min confidence:* ${status.minConfidence}%\n`;
-    text += `*Max risk score:* ${status.maxRiskScore}/10\n`;
+    text += status.enabled
+      ? `\u{1F7E2} *ON* — AI trades automatically within your limits\n\n`
+      : `\u{1F534} *OFF* — AI will ask for your approval before every trade\n\n`;
+    text += `*Your Limits:*\n`;
+    text += `  Max move per token: ${(status.maxPortfolioChangeBps / 100).toFixed(0)}% _(e.g. can't shift more than ${(status.maxPortfolioChangeBps / 100).toFixed(0)}% of USDY in one trade)_\n`;
+    text += `  Max trades per day: ${status.maxDailyTrades} _(used ${status.tradesToday} today)_\n`;
+    text += `  Min AI confidence: ${status.minConfidence}% _(AI must be at least this sure before trading)_\n`;
+    text += `  Max risk score: ${status.maxRiskScore}/10 _(won't trade if market risk is above this)_\n`;
+    text += `\nTrades that exceed these limits still require your /approve.\n`;
 
     b.sendMessage(chatId, text, {
       parse_mode: "Markdown",
       reply_markup: {
         inline_keyboard: [
-          [{ text: status.enabled ? "\u{1F534} Disable" : "\u{1F7E2} Enable", callback_data: status.enabled ? "auto_disable" : "auto_enable" }],
+          [{ text: status.enabled ? "\u{1F534} Turn OFF" : "\u{1F7E2} Turn ON", callback_data: status.enabled ? "auto_disable" : "auto_enable" }],
           [
-            { text: "10%/asset", callback_data: "auto_maxchange_1000" },
-            { text: "20%/asset", callback_data: "auto_maxchange_2000" },
-            { text: "30%/asset", callback_data: "auto_maxchange_3000" },
+            { text: "Safe (10%)", callback_data: "auto_maxchange_1000" },
+            { text: "Normal (20%)", callback_data: "auto_maxchange_2000" },
+            { text: "Bold (30%)", callback_data: "auto_maxchange_3000" },
           ],
           [
-            { text: "2/day", callback_data: "auto_maxtrades_2" },
-            { text: "3/day", callback_data: "auto_maxtrades_3" },
-            { text: "5/day", callback_data: "auto_maxtrades_5" },
+            { text: "2 trades/day", callback_data: "auto_maxtrades_2" },
+            { text: "3 trades/day", callback_data: "auto_maxtrades_3" },
+            { text: "5 trades/day", callback_data: "auto_maxtrades_5" },
           ],
           [
-            { text: "50% conf", callback_data: "auto_minconf_50" },
-            { text: "70% conf", callback_data: "auto_minconf_70" },
-            { text: "80% conf", callback_data: "auto_minconf_80" },
+            { text: "Low bar (50%)", callback_data: "auto_minconf_50" },
+            { text: "Medium (70%)", callback_data: "auto_minconf_70" },
+            { text: "High bar (80%)", callback_data: "auto_minconf_80" },
           ],
         ],
       },
     });
-  }
-
-  function sendByreal(b: TelegramBot, chatId: number) {
-    try {
-      const data = getCrossChainOpportunities();
-      let text = `\u{1F517} *Cross-Chain Yields*\n\n*Solana top:* ${data.solanaTopYield.toFixed(1)}% APY\n${data.mantleComparison}\n\n`;
-      data.opportunities.forEach((o) => {
-        const emoji = o.risk === "low" ? "\u{1F7E2}" : o.risk === "medium" ? "\u{1F7E1}" : "\u{1F534}";
-        text += `${emoji} ${o.pool}: ${o.apy.toFixed(1)}% [${o.risk}]\n`;
-      });
-      b.sendMessage(chatId, text, { parse_mode: "Markdown" });
-    } catch { b.sendMessage(chatId, "Cross-chain data unavailable."); }
   }
 
   function sendDca(b: TelegramBot, chatId: number, wallet: string) {

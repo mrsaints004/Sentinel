@@ -84,6 +84,28 @@ export function formatTokenBalance(balance: bigint, symbol: string): number {
   return parseFloat(ethers.formatUnits(balance, decimals));
 }
 
+// Fetch live yield data from DeFiLlama
+export async function fetchYieldsFromDeFiLlama(): Promise<Record<string, number>> {
+  try {
+    const res = await fetch("https://yields.llama.fi/pools", { signal: AbortSignal.timeout(8000) });
+    const data = await res.json();
+    const pools = data.data || [];
+    const mantlePools = pools.filter((p: any) => p.chain === "Mantle");
+
+    const usdyPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDY"));
+    const methPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("METH"));
+    const usdcPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDC"));
+
+    return {
+      USDY: usdyPool?.apy ?? 0,
+      mETH: methPool?.apy ?? 0,
+      USDC: usdcPool?.apy ?? 0,
+    };
+  } catch {
+    return { USDY: 0, mETH: 0, USDC: 0 };
+  }
+}
+
 // --- Multi-user support ---
 
 const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || process.env.FACTORY_ADDRESS || "";

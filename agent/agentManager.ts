@@ -10,9 +10,7 @@ import {
   PortfolioDecision,
   RiskProfile,
 } from "./agents/portfolioManager";
-import { calculateBlendedYield } from "./strategies/yieldOptimizer";
 import { checkTrade, getRules, setRules, enableAutonomous, formatRules, getTradesToday, AutonomousRules } from "./autonomousRules";
-import { getCrossChainOpportunities, getCrossChainYieldSignal, CrossChainYieldSignal } from "./skills/byrealSkill";
 import { notifyDecision, notifyApprovalNeeded, notifyUserByWallet } from "./telegram";
 import { logActivity } from "./activityLog";
 import { getReadyPlans, markExecuted, getPlans, createPlan, removePlan, pausePlan, resumePlan, formatInterval, DcaPlan } from "./dcaManager";
@@ -215,27 +213,9 @@ export class AgentManager {
     const yields = await yieldAgent.analyze(snapshot.yields);
     const risk = await riskAgent.analyze(snapshot.prices, snapshot.risk, ctx.currentAllocations);
 
-    // Cross-chain yield intelligence from Byreal
-    let crossChainSignal: CrossChainYieldSignal | undefined;
-    let crossChainContext = "";
-    try {
-      // Get structured signal for rule-based allocation adjustment
-      const usdyApy = yields.rankings.find(r => r.asset === "USDY")?.apy || 4.85;
-      crossChainSignal = getCrossChainYieldSignal(usdyApy);
-      crossChainContext = crossChainSignal.contextString;
-
-      if (crossChainSignal.signal === "solana_outperforming") {
-        console.log(`  [Byreal] Solana yields outperform Mantle by ${crossChainSignal.yieldGapPct.toFixed(1)}pp — adjusting stables +${(crossChainSignal.stableAdjustmentBps/100).toFixed(1)}%`);
-      } else if (crossChainSignal.signal === "mantle_competitive") {
-        console.log(`  [Byreal] Mantle yields competitive with Solana — no cross-chain adjustment`);
-      }
-    } catch (e) {
-      // Cross-chain data unavailable — non-critical, continue without it
-    }
-
-    // Portfolio decision — cross-chain signal directly influences rule-based allocation
-    let decision = await ctx.portfolioAgent.decide(market, yields, risk, ctx.currentAllocations, crossChainSignal);
-    decision = await ctx.portfolioAgent.enhanceWithAI(decision, market, yields, risk, ctx.currentAllocations, crossChainContext);
+    // Portfolio decision
+    let decision = await ctx.portfolioAgent.decide(market, yields, risk, ctx.currentAllocations);
+    decision = await ctx.portfolioAgent.enhanceWithAI(decision, market, yields, risk, ctx.currentAllocations);
 
     console.log(`  Action: ${decision.action} | Confidence: ${decision.confidence}% | Risk: ${decision.riskLevel}`);
 
@@ -289,8 +269,6 @@ export class AgentManager {
         const oldAlloc = ctx.currentAllocations.map((a) => a.allocationBps);
         await ctx.executor.logDecisionOnChain(decision, oldAlloc, portfolioValueUSD, commitData);
         ctx.totalDecisions++;
-        const blended = calculateBlendedYield(snapshot.yields, ctx.currentAllocations);
-        ctx.cumulativeROIBps += Math.round((blended * 100) / 365);
         await ctx.executor.updateIdentity(ctx.totalDecisions, ctx.cumulativeROIBps);
         await ctx.executor.recordDecisionOutcome(portfolioValueUSD, decision.confidence);
       } else {
@@ -473,9 +451,6 @@ export class AgentManager {
       allocationBps: a.allocationBps,
     }));
     ctx.totalDecisions++;
-
-    const blended = calculateBlendedYield([], ctx.currentAllocations);
-    ctx.cumulativeROIBps += Math.round((blended * 100) / 365);
     await ctx.executor.updateIdentity(ctx.totalDecisions, ctx.cumulativeROIBps);
 
     ctx.pendingApproval = null;

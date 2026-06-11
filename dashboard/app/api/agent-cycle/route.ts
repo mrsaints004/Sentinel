@@ -63,20 +63,20 @@ export async function POST(request: Request) {
       const usdcPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDC"));
 
       yields = [
-        { symbol: "USDY", apy: usdyPool?.apy ?? 4.85, source: usdyPool?.project ?? "Ondo Finance", tvl: usdyPool?.tvlUsd ?? 0 },
-        { symbol: "mETH", apy: methPool?.apy ?? 3.92, source: methPool?.project ?? "Mantle LSP", tvl: methPool?.tvlUsd ?? 0 },
-        { symbol: "USDC", apy: usdcPool?.apy ?? 2.65, source: usdcPool?.project ?? "Lendle", tvl: usdcPool?.tvlUsd ?? 0 },
+        { symbol: "USDY", apy: usdyPool?.apy ?? 0, source: usdyPool?.project ?? "not found", tvl: usdyPool?.tvlUsd ?? 0 },
+        { symbol: "mETH", apy: methPool?.apy ?? 0, source: methPool?.project ?? "not found", tvl: methPool?.tvlUsd ?? 0 },
+        { symbol: "USDC", apy: usdcPool?.apy ?? 0, source: usdcPool?.project ?? "not found", tvl: usdcPool?.tvlUsd ?? 0 },
       ];
 
       yields.forEach((y) => {
         steps.push({ type: "data", message: `  ${y.symbol} yield: ${y.apy.toFixed(2)}% APY (${y.source}${y.tvl > 0 ? `, TVL: $${(y.tvl / 1_000_000).toFixed(0)}M` : ""})` });
       });
     } catch {
-      steps.push({ type: "warning", message: "  DeFiLlama API unavailable, using cached yields" });
+      steps.push({ type: "warning", message: "  DeFiLlama API unavailable — yield data not available" });
       yields = [
-        { symbol: "USDY", apy: 4.85, source: "Ondo Finance" },
-        { symbol: "mETH", apy: 3.92, source: "Mantle LSP" },
-        { symbol: "USDC", apy: 2.65, source: "Lendle" },
+        { symbol: "USDY", apy: 0, source: "unavailable" },
+        { symbol: "mETH", apy: 0, source: "unavailable" },
+        { symbol: "USDC", apy: 0, source: "unavailable" },
       ];
     }
 

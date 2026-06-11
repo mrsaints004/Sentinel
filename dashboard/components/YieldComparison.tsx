@@ -26,7 +26,7 @@ export default function YieldComparison({
 
   return (
     <div className="card">
-      <h2 className="text-sm font-semibold text-s-text mb-5">Live Yield Rates</h2>
+      <h2 className="text-sm font-semibold text-s-text mb-5">Yield Rates (DeFiLlama)</h2>
       <div className="space-y-4">
         {sorted.map((asset) => (
           <div key={asset.symbol}>
@@ -60,7 +60,7 @@ export default function YieldComparison({
 
       <div className="mt-5 pt-4 border-t border-s-border">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-s-text-muted">Blended Yield</span>
+          <span className="text-xs text-s-text-muted">Est. Blended Yield</span>
           <div className="flex items-baseline gap-1">
             <span className="text-xl font-bold text-s-text">{blendedYield.toFixed(2)}%</span>
             <span className="text-xs text-s-text-muted">APY</span>

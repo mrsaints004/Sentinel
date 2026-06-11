@@ -34,7 +34,6 @@ const RISK_PROFILES = [
     icon: "🛡",
     desc: "Prioritizes capital preservation. Heavy stablecoin allocation. Lower yields, lower risk.",
     allocation: "USDY 45% / mETH 15% / USDC 40%",
-    expectedApy: "~2.8%",
     allocBps: [4500, 1500, 4000],
   },
   {
@@ -43,7 +42,6 @@ const RISK_PROFILES = [
     icon: "⚖️",
     desc: "Balanced approach. Optimizes yield while maintaining risk limits. Default strategy.",
     allocation: "USDY 35% / mETH 35% / USDC 30%",
-    expectedApy: "~3.7%",
     allocBps: [3500, 3500, 3000],
   },
   {
@@ -52,7 +50,6 @@ const RISK_PROFILES = [
     icon: "🚀",
     desc: "Maximizes yield. Higher allocation to volatile assets. Higher risk, higher potential returns.",
     allocation: "USDY 30% / mETH 50% / USDC 20%",
-    expectedApy: "~4.2%",
     allocBps: [3000, 5000, 2000],
   },
 ];
@@ -304,7 +301,6 @@ export default function CreateTreasury({
                 }`}>
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-medium text-s-text">{p.icon} {p.label}</span>
-                  <span className="text-xs font-semibold text-s-teal">{p.expectedApy} APY</span>
                 </div>
                 <p className="text-xs text-s-text-muted mb-1.5">{p.desc}</p>
                 <p className="text-[11px] text-s-text-muted font-mono">{p.allocation}</p>
@@ -330,12 +326,6 @@ export default function CreateTreasury({
             <div className="flex justify-between text-sm">
               <span className="text-s-text-muted">Strategy</span>
               <span className="font-medium text-s-text capitalize">{config.riskProfile}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-s-text-muted">Expected APY</span>
-              <span className="font-medium text-s-teal">
-                {RISK_PROFILES.find((p) => p.id === config.riskProfile)?.expectedApy}
-              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-s-text-muted">Network</span>

@@ -47,7 +47,7 @@ export default function AutonomousSettings() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
-      // silently fail in demo
+      // failed to save settings
     }
     setSaving(false);
   }

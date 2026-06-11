@@ -6,7 +6,6 @@ interface AgentEntry {
   id: number;
   name: string;
   strategy: string;
-  roi: number;
   decisions: number;
   address: string;
   isYou?: boolean;
@@ -30,7 +29,7 @@ export default function AgentLeaderboard() {
     fetchLeaderboard();
   }, []);
 
-  const sorted = [...agents].sort((a, b) => b.roi - a.roi);
+  const sorted = [...agents].sort((a, b) => b.decisions - a.decisions);
 
   if (loading) {
     return (
@@ -56,8 +55,7 @@ export default function AgentLeaderboard() {
             <tr className="text-xs text-s-text-muted uppercase tracking-wider">
               <th className="text-left pb-3 font-medium">#</th>
               <th className="text-left pb-3 font-medium">Agent</th>
-              <th className="text-right pb-3 font-medium">ROI</th>
-              <th className="text-right pb-3 font-medium hidden sm:table-cell">Decisions</th>
+              <th className="text-right pb-3 font-medium">Decisions</th>
               <th className="text-right pb-3 font-medium">NFT ID</th>
             </tr>
           </thead>
@@ -78,10 +76,7 @@ export default function AgentLeaderboard() {
                     {agent.strategy} · {agent.address.slice(0, 6)}...{agent.address.slice(-4)}
                   </div>
                 </td>
-                <td className={`py-3 text-right font-bold ${agent.roi >= 0 ? "text-s-green" : "text-s-red"}`}>
-                  {agent.roi >= 0 ? "+" : ""}{agent.roi.toFixed(2)}%
-                </td>
-                <td className="py-3 text-right text-s-text hidden sm:table-cell">
+                <td className="py-3 text-right font-bold text-s-text">
                   {agent.decisions}
                 </td>
                 <td className="py-3 text-right">
