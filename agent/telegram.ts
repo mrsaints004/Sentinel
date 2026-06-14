@@ -36,7 +36,8 @@ import {
   getPortfolioValue,
 } from "./index";
 import { fetchYieldData, fetchPriceData } from "./dataFeeds";
-import { verifyLinkToken, getAllLinkedWallets, getWalletForChat, getLinkedChat } from "./linkStore";
+import { verifyLinkToken, getAllLinkedWallets, getWalletForChat, getLinkedChat, isWalletLinked, createLinkToken, unlinkWallet } from "./linkStore";
+import * as http from "http";
 
 // --- AI for conversational responses (Groq - Llama 3.3 70B) ---
 const AI_BASE_URL = "https://api.groq.com/openai/v1";
@@ -875,6 +876,88 @@ export function notifyApprovalNeeded(decision: {
   });
 }
 
+// --- HTTP API for dashboard linking (Vercel -> Railway) ---
+
+function startLinkApiServer() {
+  const port = parseInt(process.env.PORT || "3001");
+  if (port === 0) return; // Skip when running alongside Next.js
+  const allowedOrigins = (process.env.CORS_ORIGINS || "*").split(",");
+
+  const server = http.createServer(async (req, res) => {
+    // CORS headers
+    const origin = req.headers.origin || "*";
+    const allowOrigin = allowedOrigins.includes("*") ? "*" : (allowedOrigins.includes(origin) ? origin : "");
+    res.setHeader("Access-Control-Allow-Origin", allowOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const url = new URL(req.url || "/", `http://localhost:${port}`);
+    const sendJson = (data: unknown, status = 200) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    };
+
+    // Health check
+    if (url.pathname === "/" || url.pathname === "/health") {
+      return sendJson({ status: "ok", service: "sentinel-agent" });
+    }
+
+    // GET /api/telegram-link?wallet=0x...
+    if (req.method === "GET" && url.pathname === "/api/telegram-link") {
+      const wallet = url.searchParams.get("wallet");
+      if (!wallet) return sendJson({ error: "wallet param required" }, 400);
+      const linked = isWalletLinked(wallet);
+      const chatId = getLinkedChat(wallet);
+      return sendJson({ linked, chatId });
+    }
+
+    // POST /api/telegram-link  { walletAddress: "0x..." }
+    if (req.method === "POST" && url.pathname === "/api/telegram-link") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      try {
+        const { walletAddress } = JSON.parse(body);
+        if (!walletAddress || !/^0x[0-9a-fA-F]{40}$/.test(walletAddress)) {
+          return sendJson({ error: "Invalid wallet address" }, 400);
+        }
+        if (isWalletLinked(walletAddress)) {
+          return sendJson({ linked: true });
+        }
+        const token = createLinkToken(walletAddress);
+        return sendJson({ token, expiresIn: 600 });
+      } catch {
+        return sendJson({ error: "Invalid request body" }, 400);
+      }
+    }
+
+    // DELETE /api/telegram-link  { walletAddress: "0x..." }
+    if (req.method === "DELETE" && url.pathname === "/api/telegram-link") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      try {
+        const { walletAddress } = JSON.parse(body);
+        if (!walletAddress) return sendJson({ error: "walletAddress required" }, 400);
+        const unlinked = unlinkWallet(walletAddress);
+        return sendJson({ unlinked });
+      } catch {
+        return sendJson({ error: "Invalid request body" }, 400);
+      }
+    }
+
+    sendJson({ error: "Not found" }, 404);
+  });
+
+  server.listen(port, () => {
+    console.log(`[API] Link API server running on port ${port}`);
+  });
+}
+
 // Standalone mode
 import * as dotenv from "dotenv";
 dotenv.config();
@@ -892,4 +975,7 @@ if (isStandalone) {
   }
   const bot = startTelegramBot(token);
   setBotInstance(bot);
+
+  // Start HTTP API server for dashboard communication (Vercel -> Railway)
+  startLinkApiServer();
 }

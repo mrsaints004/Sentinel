@@ -45,6 +45,9 @@ export default function TelegramConnect() {
 
       if (data.linked) {
         setIsLinked(true);
+      } else if (data.serverless) {
+        // On Vercel — open bot directly with /link instructions
+        window.open(`https://t.me/${BOT_USERNAME}`, "_blank");
       } else if (data.token) {
         // Open Telegram deep link — bot receives the token via /start payload
         window.open(`https://t.me/${BOT_USERNAME}?start=${data.token}`, "_blank");

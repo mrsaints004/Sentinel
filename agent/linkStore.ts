@@ -61,6 +61,39 @@ export function verifyLinkToken(token: string, chatId: number): { success: boole
   return { success: true, walletAddress: pending.walletAddress };
 }
 
+/**
+ * Generate a deep-link token for a wallet. Dashboard calls this via HTTP API.
+ */
+export function createLinkToken(walletAddress: string): string {
+  const store = readStore();
+  const address = walletAddress.toLowerCase();
+
+  // Clean expired tokens
+  const now = Date.now();
+  for (const [token, data] of Object.entries(store.pendingTokens)) {
+    if (now - data.createdAt > 10 * 60 * 1000) {
+      delete store.pendingTokens[token];
+    }
+  }
+
+  // Remove existing tokens for this wallet
+  for (const [token, data] of Object.entries(store.pendingTokens)) {
+    if (data.walletAddress === address) {
+      delete store.pendingTokens[token];
+    }
+  }
+
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+  let token = "";
+  for (let i = 0; i < 32; i++) {
+    token += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  store.pendingTokens[token] = { walletAddress: address, createdAt: now };
+  writeStore(store);
+  return token;
+}
+
 export function getLinkedChat(walletAddress: string): number | null {
   const store = readStore();
   return store.linkedWallets[walletAddress.toLowerCase()] || null;
