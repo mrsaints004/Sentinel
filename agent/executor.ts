@@ -18,9 +18,9 @@ const SWAP_ROUTER_ABI = [
 ];
 
 const LOGGER_ABI = [
-  // Legacy (backwards compatible)
+  // Without commit-reveal (fallback)
   "function logDecision(string reasoning, string action, uint256[] oldAllocations, uint256[] newAllocations, string[] assetNames, uint256 portfolioValueUSD, string riskLevel) external",
-  // Commit-reveal version
+  // With commit-reveal verification
   "function commitDecision(bytes32 hash) external returns (uint256 commitId)",
   "function logDecision(string reasoning, string action, uint256[] oldAllocations, uint256[] newAllocations, string[] assetNames, uint256 portfolioValueUSD, string riskLevel, uint256 commitId, bytes32 nonce) external",
   "function decisionCount() external view returns (uint256)",
@@ -132,9 +132,13 @@ export class Executor {
       let totalUSD = 0;
       for (let i = 0; i < names.length; i++) {
         const symbol = names[i];
-        const balance = Number(ethers.formatUnits(balances[i], 18));
-        if (symbol === "USDC" || symbol === "USDY") {
+        // USDC uses 6 decimals; all other tokens on Mantle use 18
+        const decimals = symbol === "USDC" ? 6 : 18;
+        const balance = Number(ethers.formatUnits(balances[i], decimals));
+        if (symbol === "USDC") {
           totalUSD += balance;
+        } else if (symbol === "USDY") {
+          totalUSD += balance * 1.05; // USDY accrues yield, ~$1.05 market price
         } else if (symbol === "mETH") {
           totalUSD += balance * (mETHPriceUSD || 2500);
         } else {
@@ -342,7 +346,7 @@ export class Executor {
           commitData.nonce
         );
       } else {
-        // Legacy: log without commit-reveal
+        // Fallback: log without commit-reveal
         tx = await this.logger[
           "logDecision(string,string,uint256[],uint256[],string[],uint256,string)"
         ](
@@ -365,12 +369,14 @@ export class Executor {
           const count = await this.logger.decisionCount();
           const [, verified] = await this.logger.getDecisionVerification(count);
           console.log(`[Commit-Reveal] Verification: ${verified ? "VERIFIED" : "UNVERIFIED"}`);
-        } catch {}
+        } catch (err) {
+          console.warn("[Commit-Reveal] Could not check verification status:", (err as Error).message);
+        }
       }
 
       return receipt.hash;
     } catch (error) {
-      console.error("Failed to log decision:", error);
+      console.error("[DecisionLogger] Failed to log decision:", error);
       return null;
     }
   }
@@ -395,7 +401,7 @@ export class Executor {
    * Fund sub-agent wallets with MNT for gas if their balance is low.
    * Called automatically before consensus voting.
    */
-  async fundSubAgents(minBalance = ethers.parseEther("0.05"), topUp = ethers.parseEther("0.1")): Promise<void> {
+  async fundSubAgents(minBalance = ethers.parseEther("0.005"), topUp = ethers.parseEther("0.01")): Promise<void> {
     for (let i = 0; i < this.subAgentWallets.length; i++) {
       const sub = this.subAgentWallets[i];
       const balance = await this.provider.getBalance(sub.address);
@@ -403,7 +409,7 @@ export class Executor {
         try {
           const tx = await this.wallet.sendTransaction({ to: sub.address, value: topUp });
           await tx.wait();
-          console.log(`[Funding] Sent 0.1 MNT to sub-agent ${i} (${sub.address.slice(0, 10)}...)`);
+          console.log(`[Funding] Sent 0.01 MNT to sub-agent ${i} (${sub.address.slice(0, 10)}...)`);
         } catch (e: any) {
           console.error(`[Funding] Failed to fund sub-agent ${i}:`, e.shortMessage || e.message);
         }
@@ -601,7 +607,9 @@ export class Executor {
           swapAmount
         );
         minOut = (quote * 98n) / 100n;
-      } catch {}
+      } catch {
+        // Quoter unavailable — use default 2% slippage
+      }
 
       // Pass current on-chain allocations to preserve them — only the swap changes balances
       const { allocations: currentOnChainAlloc } = await this.getCurrentAllocations();

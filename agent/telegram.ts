@@ -47,9 +47,6 @@ function getAIClient(): OpenAI | null {
   return new OpenAI({ apiKey: config.openaiApiKey, baseURL: AI_BASE_URL });
 }
 
-/**
- * Helper: resolve wallet for a given chatId. Returns null if not linked.
- */
 function resolveWallet(chatId: number): string | null {
   return getWalletForChat(chatId);
 }
@@ -151,7 +148,7 @@ IMPORTANT RULES:
 
     return response.choices[0]?.message?.content?.trim() || "";
   } catch (error) {
-    console.error("[Telegram AI] Gemini call failed:", error);
+    console.error("[Telegram AI] AI call failed:", error);
     return "";
   }
 }
@@ -583,7 +580,7 @@ export function startTelegramBot(token: string) {
     const stats = getAgentStats(wallet);
     const allocations = getCurrentAllocations(wallet);
     let yields: any[] = [];
-    try { yields = await fetchYieldData(); } catch {}
+    try { yields = await fetchYieldData(); } catch { /* Yield API unavailable — use empty defaults */ }
 
     const roi = (stats.cumulativeROIBps / 100).toFixed(2);
     const totalValueUSD = await getPortfolioValue(wallet);
@@ -811,9 +808,6 @@ export function notifyAllLinkedUsers(message: string) {
   });
 }
 
-/**
- * Notify a specific user by wallet address.
- */
 export function notifyUserByWallet(wallet: string, decision: {
   action: string;
   confidence: number;
@@ -842,7 +836,7 @@ export function notifyDecision(decision: {
   riskLevel: string;
   newAllocations: { symbol: string; allocationBps: number }[];
 }, txHash: string | null) {
-  // Legacy: broadcast to all linked users
+  // Broadcast to all linked users for this wallet
   const allocText = decision.newAllocations
     .map((a) => `${a.symbol}: ${(a.allocationBps / 100).toFixed(1)}%`)
     .join(" | ");

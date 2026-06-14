@@ -17,8 +17,7 @@
     "start": "cd dashboard && npx next start"
   },
   "dependencies": {
-    "@byreal-io/byreal-cli": "^0.3.6",
-    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+"@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@openzeppelin/contracts": "^5.0.0",
     "@rainbow-me/rainbowkit": "^2.1.0",
     "@tanstack/react-query": "^5.50.0",

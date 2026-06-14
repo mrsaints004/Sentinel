@@ -16,7 +16,9 @@ function readStore(): LinkStore {
     if (fs.existsSync(STORE_PATH)) {
       return JSON.parse(fs.readFileSync(STORE_PATH, "utf-8"));
     }
-  } catch {}
+  } catch {
+    // Store file doesn't exist yet — return empty
+  }
   return { pendingTokens: {}, linkedWallets: {} };
 }
 

@@ -22,7 +22,7 @@ function readStore(): LinkStore {
     if (fs.existsSync(STORE_PATH)) {
       return JSON.parse(fs.readFileSync(STORE_PATH, "utf-8"));
     }
-  } catch {}
+  } catch { /* Link store file missing or corrupt — return empty store */ }
   return { pendingTokens: {}, linkedWallets: {} };
 }
 

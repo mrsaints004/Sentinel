@@ -28,7 +28,7 @@ function readPlans(wallet: string): DcaPlan[] {
   try {
     const filePath = getUserDataPath(wallet, "dca-plans.json");
     if (fs.existsSync(filePath)) return JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  } catch {}
+  } catch { /* DCA plans file missing or malformed — return empty list */ }
   return [];
 }
 

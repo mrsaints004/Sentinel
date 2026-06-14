@@ -15,13 +15,13 @@ interface AutonomousRules {
 
 export default function AutonomousSettings() {
   const [rules, setRules] = useState<AutonomousRules>({
-    enabled: false,
-    maxPortfolioChangeBps: 2000,
+    enabled: true,
+    maxPortfolioChangeBps: 1500,
     maxDailyTrades: 3,
     allowedAssets: ["USDY", "mETH", "USDC"],
     riskProfile: "moderate",
-    maxRiskScore: 7,
-    minConfidence: 60,
+    maxRiskScore: 5,
+    minConfidence: 70,
     tradesToday: 0,
   });
   const [saving, setSaving] = useState(false);
@@ -30,7 +30,10 @@ export default function AutonomousSettings() {
   useEffect(() => {
     fetch("/api/autonomous")
       .then((r) => r.json())
-      .then((data) => setRules(data))
+      .then((data) => {
+        const { pendingApproval, ...rulesData } = data;
+        setRules((prev) => ({ ...prev, ...rulesData }));
+      })
       .catch(() => {});
   }, []);
 

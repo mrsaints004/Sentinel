@@ -58,7 +58,7 @@ function defaultYields(): YieldData[] {
 
 function defaultPrices(): PriceData[] {
   return [
-    { asset: "USDY", priceUSD: 1.0, change24h: 0, pegDeviation: 0 },
+    { asset: "USDY", priceUSD: 1.05, change24h: 0, pegDeviation: 0 },
     { asset: "mETH", priceUSD: 3400, change24h: 0, pegDeviation: 0 },
     { asset: "USDC", priceUSD: 1.0, change24h: 0, pegDeviation: 0 },
   ];

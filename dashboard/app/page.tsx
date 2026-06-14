@@ -39,9 +39,18 @@ interface AgentInfo {
   lastActive: string;
 }
 
-/**
- * Helper: append wallet query param to URL for scoped data fetching.
- */
+interface DecisionEntry {
+  id: number;
+  action: string;
+  reasoning: string;
+  timestamp: number;
+  confidence?: number;
+  riskLevel?: string;
+  commitHash?: string;
+  verified?: boolean;
+  txHash?: string;
+}
+
 function walletUrl(url: string, walletAddress?: string): string {
   if (!walletAddress) return url;
   const sep = url.includes("?") ? "&" : "?";
@@ -50,7 +59,7 @@ function walletUrl(url: string, walletAddress?: string): string {
 
 export default function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
-  const [decisions, setDecisions] = useState<any[]>([]);
+  const [decisions, setDecisions] = useState<DecisionEntry[]>([]);
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [tab, setTab] = useState<"dashboard" | "create" | "leaderboard">("dashboard");
   const [showCreate, setShowCreate] = useState(false);
@@ -70,8 +79,8 @@ export default function Dashboard() {
         setPortfolio(await portfolioRes.json());
         setDecisions(await decisionsRes.json());
         setAgent(await agentRes.json());
-      } catch (error) {
-        console.error("Failed to fetch data:", error);
+      } catch {
+        // API fetch failed — will retry on next interval
       }
     }
     fetchData();
@@ -349,7 +358,7 @@ export default function Dashboard() {
 
         {/* Pending Approval */}
         <div className="mb-6">
-          <PendingApproval />
+          <PendingApproval walletAddress={wallet.address ?? undefined} />
         </div>
 
         {/* AI Terminal */}
@@ -380,7 +389,7 @@ export default function Dashboard() {
             <HowItWorks />
             <AutonomousSettings />
             <TelegramConnect />
-            <DepositForm isConnected={wallet.isConnected} onConnect={wallet.connect} />
+            <DepositForm isConnected={wallet.isConnected} onConnect={wallet.connect} walletAddress={wallet.address || undefined} />
 
             {/* On-chain info */}
             <div className="card">

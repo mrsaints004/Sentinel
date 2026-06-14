@@ -90,11 +90,11 @@ export async function fetchYieldsFromDeFiLlama(): Promise<Record<string, number>
     const res = await fetch("https://yields.llama.fi/pools", { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
     const pools = data.data || [];
-    const mantlePools = pools.filter((p: any) => p.chain === "Mantle");
+    const mantlePools = pools.filter((p: Record<string, unknown>) => p.chain === "Mantle");
 
-    const usdyPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDY"));
-    const methPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("METH"));
-    const usdcPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDC"));
+    const usdyPool = mantlePools.find((p: Record<string, unknown>) => (p.symbol as string)?.toUpperCase().includes("USDY"));
+    const methPool = mantlePools.find((p: Record<string, unknown>) => (p.symbol as string)?.toUpperCase().includes("METH"));
+    const usdcPool = mantlePools.find((p: Record<string, unknown>) => (p.symbol as string)?.toUpperCase().includes("USDC"));
 
     return {
       USDY: usdyPool?.apy ?? 0,
@@ -132,7 +132,9 @@ export async function getUserVaultAddress(wallet: string): Promise<{ vault: stri
       if (vault !== ethers.ZeroAddress && Number(createdAt) > 0) {
         return { vault, logger };
       }
-    } catch {}
+    } catch {
+      // Factory call failed — fall back to global vault
+    }
   }
   // Fallback to global
   if (VAULT_ADDRESS) return { vault: VAULT_ADDRESS, logger: LOGGER_ADDRESS };

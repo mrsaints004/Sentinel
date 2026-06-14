@@ -22,6 +22,12 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
+    hardhat: {
+      forking: {
+        url: MANTLE_MAINNET_RPC,
+        enabled: !!process.env.FORK_MANTLE,
+      },
+    },
     mantle: {
       url: MANTLE_MAINNET_RPC,
       chainId: 5000,

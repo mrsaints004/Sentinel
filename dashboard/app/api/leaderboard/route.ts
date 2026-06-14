@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json([]);
   }
 
-  const agents: any[] = [];
+  const agents: { id: number; name: string; strategy: string; decisions: number; address: string; isYou: boolean; lastActive: number }[] = [];
 
   try {
     const tokenId = await identity.agentToToken(AGENT_ADDRESS);
@@ -26,7 +26,9 @@ export async function GET() {
       isYou: true,
       lastActive: Number(metadata.lastActiveAt),
     });
-  } catch {}
+  } catch {
+    // Agent not registered yet
+  }
 
   return NextResponse.json(agents);
 }

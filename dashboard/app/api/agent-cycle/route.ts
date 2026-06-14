@@ -51,16 +51,16 @@ export async function POST(request: Request) {
     // Step 2: Fetch real yield data from DeFiLlama
     steps.push({ type: "data", message: "[1/5] Fetching market data from DeFi protocols..." });
 
-    let yields: any[] = [];
+    let yields: { symbol: string; apy: number; source: string; tvl?: number }[] = [];
     try {
       const llamaRes = await fetch("https://yields.llama.fi/pools", { signal: AbortSignal.timeout(8000) });
       const llamaData = await llamaRes.json();
       const pools = llamaData.data || [];
-      const mantlePools = pools.filter((p: any) => p.chain === "Mantle");
+      const mantlePools = pools.filter((p: Record<string, unknown>) => p.chain === "Mantle");
 
-      const usdyPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDY"));
-      const methPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("METH"));
-      const usdcPool = mantlePools.find((p: any) => p.symbol?.toUpperCase().includes("USDC"));
+      const usdyPool = mantlePools.find((p: Record<string, unknown>) => (p.symbol as string)?.toUpperCase().includes("USDY"));
+      const methPool = mantlePools.find((p: Record<string, unknown>) => (p.symbol as string)?.toUpperCase().includes("METH"));
+      const usdcPool = mantlePools.find((p: Record<string, unknown>) => (p.symbol as string)?.toUpperCase().includes("USDC"));
 
       yields = [
         { symbol: "USDY", apy: usdyPool?.apy ?? 0, source: usdyPool?.project ?? "not found", tvl: usdyPool?.tvlUsd ?? 0 },
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       ];
 
       yields.forEach((y) => {
-        steps.push({ type: "data", message: `  ${y.symbol} yield: ${y.apy.toFixed(2)}% APY (${y.source}${y.tvl > 0 ? `, TVL: $${(y.tvl / 1_000_000).toFixed(0)}M` : ""})` });
+        steps.push({ type: "data", message: `  ${y.symbol} yield: ${y.apy.toFixed(2)}% APY (${y.source}${(y.tvl ?? 0) > 0 ? `, TVL: $${((y.tvl ?? 0) / 1_000_000).toFixed(0)}M` : ""})` });
       });
     } catch {
       steps.push({ type: "warning", message: "  DeFiLlama API unavailable — yield data not available" });
@@ -189,7 +189,7 @@ Allocations must sum to 10000. No allocation above 6000 (60% cap). Be specific a
       try {
         const rebalanceCount = await vault.rebalanceCount();
         steps.push({ type: "action", message: `  Vault rebalance count: ${rebalanceCount}` });
-      } catch {}
+      } catch { /* Rebalance count read failed — skip metric */ }
 
       try {
         const [, names, balances] = await vault.getPortfolio();
@@ -202,14 +202,14 @@ Allocations must sum to 10000. No allocation above 6000 (60% cap). Be specific a
             steps.push({ type: "action", message: `  ${names[i]} balance: ${bal.toFixed(6)}` });
           }
         }
-      } catch {}
+      } catch { /* Portfolio read failed — skip balance display */ }
     }
 
     if (logger) {
       try {
         const decisionCount = await logger.decisionCount();
         steps.push({ type: "action", message: `  On-chain decisions logged: ${decisionCount}` });
-      } catch {}
+      } catch { /* Decision count read failed — skip metric */ }
     }
 
     // Summary

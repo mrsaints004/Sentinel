@@ -15,7 +15,7 @@ import { notifyDecision, notifyApprovalNeeded, notifyUserByWallet } from "./tele
 import { logActivity } from "./activityLog";
 import { getReadyPlans, markExecuted, getPlans, createPlan, removePlan, pausePlan, resumePlan, formatInterval, DcaPlan } from "./dcaManager";
 import { getReadyTasks, markTaskExecuted, getTasks, createTask, removeTask, pauseTask, resumeTask, createWeeklyRebalance, createSafetyShift, createYieldChase, ScheduledTask, MarketSnapshot as SchedulerMarketSnapshot } from "./scheduler";
-import { getAllUserWallets, migrateGlobalToUser } from "./userStore";
+import { getAllUserWallets, migrateGlobalToUser, saveUserFileSync, loadUserFileSync } from "./userStore";
 
 // --- Shared Sub-Agents (stateless, created once) ---
 const marketAgent = new MarketIntelligenceAgent();
@@ -80,13 +80,12 @@ export class AgentManager {
       }
     }
 
-    // Migrate legacy single-user data if VAULT_ADDRESS is set and no users found
+    // No factory vaults — use single-vault config from .env
     if (this.userContexts.size === 0 && config.vaultAddress && config.loggerAddress) {
-      console.log("[AgentManager] No factory vaults found. Using legacy single-vault config.");
-      // Use a placeholder wallet address for legacy mode
-      const legacyWallet = "0x0000000000000000000000000000000000000001";
-      migrateGlobalToUser(legacyWallet);
-      this.addUser(legacyWallet, config.vaultAddress, config.loggerAddress);
+      console.log("[AgentManager] No factory vaults found. Using single-vault config from .env.");
+      const ownerWallet = config.agentWalletAddress || config.vaultAddress;
+      migrateGlobalToUser(ownerWallet);
+      this.addUser(ownerWallet, config.vaultAddress, config.loggerAddress);
     }
 
     this.running = true;
@@ -183,6 +182,8 @@ export class AgentManager {
 
     for (const [wallet, ctx] of this.userContexts) {
       try {
+        // Check for dashboard approval/rejection responses
+        this.checkDashboardApproval(ctx);
         // Check DCA plans first
         await this.checkDcaForUser(ctx);
         // Run main cycle
@@ -295,6 +296,7 @@ export class AgentManager {
       notifyUserByWallet(ctx.wallet, decision, txHash);
     } else if (tradeCheck.requiresApproval) {
       ctx.pendingApproval = decision;
+      savePendingApproval(ctx.wallet, decision, ctx.currentAllocations);
       logActivity(ctx.wallet, {
         type: "approval",
         action: decision.action,
@@ -314,6 +316,26 @@ export class AgentManager {
     }
     ctx.lastCycleAt = Date.now();
     return result;
+  }
+
+  private checkDashboardApproval(ctx: UserContext): void {
+    const response = loadUserFileSync<{ action: string; timestamp: number } | null>(
+      ctx.wallet, "approval-response.json", null
+    );
+    if (!response) return;
+
+    // Clear the response file immediately to prevent re-processing
+    saveUserFileSync(ctx.wallet, "approval-response.json", null);
+
+    if (!ctx.pendingApproval) return;
+
+    if (response.action === "approve") {
+      console.log(`[AgentManager] Dashboard approval received for ${ctx.wallet.slice(0, 8)}...`);
+      this.approveDecision(ctx.wallet, "dashboard");
+    } else if (response.action === "reject") {
+      console.log(`[AgentManager] Dashboard rejection received for ${ctx.wallet.slice(0, 8)}...`);
+      this.rejectDecision(ctx.wallet, "dashboard");
+    }
   }
 
   private async checkDcaForUser(ctx: UserContext): Promise<void> {
@@ -454,6 +476,7 @@ export class AgentManager {
     await ctx.executor.updateIdentity(ctx.totalDecisions, ctx.cumulativeROIBps);
 
     ctx.pendingApproval = null;
+    clearPendingApproval(wallet);
     return true;
   }
 
@@ -468,6 +491,7 @@ export class AgentManager {
       source,
     });
     ctx.pendingApproval = null;
+    clearPendingApproval(wallet);
     return true;
   }
 
@@ -500,6 +524,36 @@ export class AgentManager {
   getExecutor(wallet: string): Executor | undefined {
     return this.getContext(wallet)?.executor;
   }
+}
+
+// --- Pending Approval File Persistence ---
+
+const PENDING_FILE = "pending-approval.json";
+
+function savePendingApproval(
+  wallet: string,
+  decision: PortfolioDecision,
+  currentAllocations: { symbol: string; allocationBps: number }[]
+): void {
+  saveUserFileSync(wallet, PENDING_FILE, {
+    action: decision.action,
+    reasoning: decision.reasoning,
+    confidence: decision.confidence,
+    riskLevel: decision.riskLevel,
+    currentAllocations: currentAllocations.map((a) => ({
+      symbol: a.symbol,
+      pct: (a.allocationBps / 100),
+    })),
+    newAllocations: decision.newAllocations.map((a) => ({
+      symbol: a.symbol,
+      pct: (a.allocationBps / 100),
+    })),
+    timestamp: Date.now(),
+  });
+}
+
+function clearPendingApproval(wallet: string): void {
+  saveUserFileSync(wallet, PENDING_FILE, null);
 }
 
 // --- Sub-Agent Vote Computation (stateless helpers) ---

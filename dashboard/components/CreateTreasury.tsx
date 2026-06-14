@@ -93,7 +93,7 @@ export default function CreateTreasury({
         if (vault !== ethers.ZeroAddress && Number(createdAt) > 0) {
           setExistingVault(vault);
         }
-      } catch {}
+      } catch { /* Vault lookup failed — assume no existing vault */ }
     })();
   }, [isConnected, walletAddress]);
 
@@ -126,7 +126,7 @@ export default function CreateTreasury({
               vaultAddr = parsed.args.vault;
               break;
             }
-          } catch {}
+          } catch { /* Log doesn't match VaultCreated event — skip to next log */ }
         }
 
         if (!vaultAddr) {
@@ -158,7 +158,7 @@ export default function CreateTreasury({
 
         setTxHash(receipt.hash);
       } else {
-        // Legacy: direct deposit to global vault
+        // Direct deposit to global vault (single-user mode)
         const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "";
         const amountWei = ethers.parseUnits(config.depositAmount, USDC_DECIMALS);
 
@@ -205,20 +205,56 @@ export default function CreateTreasury({
   // Show "already have vault" state
   if (existingVault) {
     return (
-      <div className="card text-center py-10">
-        <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-indigo-50 flex items-center justify-center">
-          <svg className="w-7 h-7 text-s-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path d="M5 13l4 4L19 7"/>
-          </svg>
+      <div className="card py-8">
+        <div className="text-center mb-6">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-green-50 flex items-center justify-center">
+            <svg className="w-7 h-7 text-s-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-s-text mb-1">Your Vault</h3>
+          <p className="text-sm text-s-text-muted">
+            Deployed on Mantle. The AI agent monitors and manages it.
+          </p>
         </div>
-        <h3 className="text-lg font-semibold text-s-text mb-1">You Already Have a Vault</h3>
-        <p className="text-sm text-s-text-muted mb-4">
-          Your vault is deployed and the AI agent is managing it.
-        </p>
-        <p className="text-xs font-mono text-s-accent mb-4">
-          {existingVault.slice(0, 8)}...{existingVault.slice(-6)}
-        </p>
-        <button onClick={onClose} className="btn-primary">View Dashboard</button>
+
+        <div className="rounded-xl bg-s-bg border border-s-border p-4 mb-4 space-y-2.5">
+          <div className="flex justify-between text-sm">
+            <span className="text-s-text-muted">Vault Address</span>
+            <a
+              href={`https://mantlescan.xyz/address/${existingVault}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-s-accent hover:underline"
+            >
+              {existingVault.slice(0, 8)}...{existingVault.slice(-6)}
+            </a>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-s-text-muted">Network</span>
+            <span className="text-s-teal font-medium">Mantle Mainnet</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-s-text-muted">Owner</span>
+            <span className="font-mono text-s-text">
+              {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-4)}` : "—"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <a
+            href={`https://mantlescan.xyz/address/${existingVault}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary flex-1 text-center"
+          >
+            View on Explorer
+          </a>
+          <button onClick={onClose} className="btn-primary flex-1">
+            View Dashboard
+          </button>
+        </div>
       </div>
     );
   }

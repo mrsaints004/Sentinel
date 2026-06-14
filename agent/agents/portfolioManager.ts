@@ -260,7 +260,7 @@ export class PortfolioManagerAgent {
   }
 
   /**
-   * Enhance decision with Gemini AI reasoning AND allocation adjustments.
+   * Enhance decision with Llama 3.3 70B AI reasoning AND allocation adjustments.
    * The AI can override allocations within safe bounds (no single asset > 60%,
    * must sum to 10000 bps). Falls back to rule-based if AI fails.
    */

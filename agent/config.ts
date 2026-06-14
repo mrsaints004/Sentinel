@@ -14,12 +14,13 @@ export const config = {
   identityAddress: process.env.IDENTITY_ADDRESS || "",
   consensusAddress: process.env.CONSENSUS_ADDRESS || "",
   swapRouterAddress: process.env.SWAP_ROUTER_ADDRESS || "",
+  agentWalletAddress: process.env.AGENT_WALLET_ADDRESS || "",
 
-  // Merchant Moe DEX
-  merchantMoeRouter: process.env.MERCHANT_MOE_LB_ROUTER || "0x013e138EF6008ae5FDFDE29700e3f2Bc61d21E3a",
-  merchantMoeFactory: process.env.MERCHANT_MOE_LB_FACTORY || "0xa6630671775c4EA2743840F9A5016dCf2A104054",
+  // Agni Finance DEX (Uniswap V3 on Mantle)
+  agniRouter: "0x319B69888b0d11cEC22caA5034e25FfFBDc88421",
+  agniQuoter: "0x9488C05a7b75a6FefdcAE4f11a33467bcBA60177",
 
-  // Gemini AI (via OpenAI-compatible endpoint)
+  // Llama 3.3 70B (via Groq API)
   openaiApiKey: process.env.OPENAI_API_KEY || "",
 
   // Agent settings

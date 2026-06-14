@@ -18,10 +18,10 @@ export async function GET(request: Request) {
         const recent = Array.isArray(data) ? data.slice(-20).reverse() : [];
         return NextResponse.json(recent);
       }
-    } catch {}
+    } catch { /* User activity log missing or corrupt — try global fallback */ }
   }
 
-  // Fallback to global log (legacy)
+  // Fallback to global activity log
   const globalLogPath = path.resolve(process.cwd(), "..", ".activity-log.json");
   try {
     if (fs.existsSync(globalLogPath)) {
@@ -29,6 +29,6 @@ export async function GET(request: Request) {
       const recent = Array.isArray(data) ? data.slice(-20).reverse() : [];
       return NextResponse.json(recent);
     }
-  } catch {}
+  } catch { /* Global activity log missing or corrupt — return empty */ }
   return NextResponse.json([]);
 }

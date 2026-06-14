@@ -23,7 +23,9 @@ export function loadUserFileSync<T>(wallet: string, filename: string, fallback: 
     if (fs.existsSync(filePath)) {
       return JSON.parse(fs.readFileSync(filePath, "utf-8"));
     }
-  } catch {}
+  } catch {
+    // File doesn't exist or is invalid JSON — use fallback
+  }
   return fallback;
 }
 
@@ -41,7 +43,9 @@ export async function loadUserFile<T>(wallet: string, filename: string, fallback
     const filePath = path.join(getUserDir(wallet), filename);
     const data = await fsp.readFile(filePath, "utf-8");
     return JSON.parse(data);
-  } catch {}
+  } catch {
+    // File doesn't exist or is invalid JSON — use fallback
+  }
   return fallback;
 }
 
@@ -67,8 +71,7 @@ export function getAllUserWallets(): string[] {
   }
 }
 
-// --- Legacy migration helper ---
-// Moves global data files into a specific user's directory (one-time migration)
+// Moves global data files into a user's directory (one-time migration on first run)
 export function migrateGlobalToUser(wallet: string): void {
   const projectRoot = path.join(__dirname, "..");
   const globalFiles = [

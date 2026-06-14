@@ -48,7 +48,7 @@ interface AgentInfo {
   agentName: string;
   strategyType: string;
   totalDecisions: number;
-  cumulativeROIBps: number;
+  cumulativeROIBps?: number;
   isRunning: boolean;
   uptime: number;
   walletAddress: string;

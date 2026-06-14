@@ -5,7 +5,7 @@ import { ethers } from "hardhat";
  *
  * Deploys: SentinelVault, DecisionLogger, AgentIdentity, AgentConsensus
  * Uses REAL tokens: USDY, mETH, USDC on Mantle Mainnet
- * Integrates with Merchant Moe LB Router for real DEX swaps
+ * Integrates with Agni Finance (Uniswap V3) for real DEX swaps
  */
 
 // Real Mantle Mainnet token addresses
@@ -16,9 +16,9 @@ const TOKENS = {
   WETH: "0xdEAddEaDdeadDEadDEADDEAddEADDEAddead1111",  // Wrapped ETH
 };
 
-// Merchant Moe DEX (for real swaps)
-const MERCHANT_MOE_LB_ROUTER = "0x013e138EF6008ae5FDFDE29700e3f2Bc61d21E3a";
-const MERCHANT_MOE_LB_FACTORY = "0xa6630671775c4EA2743840F9A5016dCf2A104054";
+// Agni Finance V3 (for real swaps)
+const AGNI_ROUTER = "0x319B69888b0d11cEC22caA5034e25FfFBDc88421";
+const AGNI_QUOTER = "0x9488C05a7b75a6FefdcAE4f11a33467bcBA60177";
 
 const EXPLORER = "https://mantlescan.xyz";
 
@@ -103,24 +103,24 @@ async function main() {
   await (await vault.addSupportedAsset(TOKENS.USDC, "USDC")).wait();
   console.log("Added USDC (Bridged USDC)");
 
-  // 6. Deploy MerchantMoeAdapter and set as swap router
-  console.log("\n--- Deploying Merchant Moe Adapter ---");
-  const Adapter = await ethers.getContractFactory("MerchantMoeAdapter");
-  const adapter = await Adapter.deploy(MERCHANT_MOE_LB_ROUTER, MERCHANT_MOE_LB_FACTORY);
+  // 6. Deploy AgniAdapter and set as swap router
+  console.log("\n--- Deploying Agni Finance Adapter ---");
+  const Adapter = await ethers.getContractFactory("AgniAdapter");
+  const adapter = await Adapter.deploy(AGNI_ROUTER, AGNI_QUOTER);
   await adapter.waitForDeployment();
   const adapterAddr = await adapter.getAddress();
-  console.log(`MerchantMoeAdapter: ${adapterAddr}`);
-  console.log(`  Wraps LB Router: ${MERCHANT_MOE_LB_ROUTER}`);
+  console.log(`AgniAdapter: ${adapterAddr}`);
+  console.log(`  Wraps Agni V3 Router: ${AGNI_ROUTER}`);
 
-  // Configure bin steps for common pairs
-  await (await adapter.setBinStep(TOKENS.USDY, TOKENS.USDC, 1)).wait();
-  await (await adapter.setBinStep(TOKENS.mETH, TOKENS.USDC, 20)).wait();
-  await (await adapter.setBinStep(TOKENS.mETH, TOKENS.USDY, 20)).wait();
-  console.log("Bin steps configured for token pairs");
+  // Configure fee tiers for token pairs (matching real Agni pools with liquidity)
+  await (await adapter.setFeeTier(TOKENS.USDY, TOKENS.USDC, 100)).wait();   // 0.01%
+  await (await adapter.setFeeTier(TOKENS.mETH, TOKENS.USDC, 10000)).wait(); // 1%
+  await (await adapter.setFeeTier(TOKENS.mETH, TOKENS.USDY, 2500)).wait();  // 0.25%
+  console.log("Fee tiers configured for token pairs");
 
   // Set adapter as vault's swap router
   await (await vault.setSwapRouter(adapterAddr)).wait();
-  console.log("Vault swap router set to MerchantMoeAdapter");
+  console.log("Vault swap router set to AgniAdapter");
 
   // 7. Configure DecisionLogger + AgentIdentity
   console.log("\n--- Configuring contracts ---");
@@ -171,7 +171,7 @@ async function main() {
   console.log(`  CONSENSUS_ADDRESS=${consensusAddr}`);
   console.log(`  FACTORY_ADDRESS=${factoryAddr}`);
   console.log(`  SWAP_ROUTER_ADDRESS=${adapterAddr}`);
-  console.log(`  MERCHANT_MOE_ADAPTER=${adapterAddr}`);
+  console.log(`  AGNI_ADAPTER=${adapterAddr}`);
   console.log("\nReal Tokens (Mantle Mainnet):");
   console.log(`  USDY_ADDRESS=${TOKENS.USDY}`);
   console.log(`  METH_ADDRESS=${TOKENS.mETH}`);

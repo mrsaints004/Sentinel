@@ -63,7 +63,7 @@ Here is the step-by-step flow of a single decision cycle:
 5. EXECUTE (on-chain)
    The agent calls SentinelVault.rebalance() or rebalanceWithSwap()
    to update the portfolio allocation on-chain. If a DEX swap is needed,
-   it routes through Merchant Moe's Liquidity Book.
+   it routes through Agni Finance's V3 Router.
 
 6. REVEAL (on-chain)
    The agent calls DecisionLogger.logDecision() with the original data
@@ -186,14 +186,14 @@ Weighted USDY = (3000x90 + 3500x70 + 4500x60 + 3500x80) / (90+70+60+80) = 3533 b
 
 The higher-confidence Market agent pulls the allocation toward its bullish position, while the lower-confidence Risk agent has less influence.
 
-### MerchantMoeAdapter.sol
+### AgniAdapter.sol
 
-Wraps the Merchant Moe Liquidity Book Router to implement the `ISwapRouter` interface used by SentinelVault.
+Wraps the Agni Finance V3 SwapRouter to implement the `ISwapRouter` interface used by SentinelVault. Agni is a Uniswap V3 fork on Mantle with real liquidity for USDY/USDC, mETH/USDC, and mETH/USDY pairs.
 
 **Key functions:**
-- `swap(tokenIn, tokenOut, amountIn, minAmountOut)` - Execute a swap
-- `getAmountOut(tokenIn, tokenOut, amountIn)` - Get a price quote
-- `setBinStep(tokenA, tokenB, binStep)` - Configure bin step for a token pair
+- `swap(tokenIn, tokenOut, amountIn, minAmountOut)` - Execute a swap via Agni V3 `exactInputSingle`
+- `getAmountOut(tokenIn, tokenOut, amountIn)` - Get a price quote via Agni Quoter
+- `setFeeTier(tokenA, tokenB, fee)` - Configure fee tier for a token pair (100=0.01%, 500=0.05%, etc.)
 
 ---
 
@@ -253,7 +253,7 @@ Makes the final allocation decision by blending all three agent outputs.
    - Conservative: 20% yield, 60% safety, 20% momentum
    - Moderate: 40% yield, 35% safety, 25% momentum
    - Aggressive: 50% yield, 20% safety, 30% momentum
-5. Enhance with Gemini AI - sends all data to Gemini 2.0 Flash for AI-powered allocation adjustment and natural language reasoning
+5. Enhance with AI - sends all data to Llama 3.3 70B (via Groq API) for AI-powered allocation adjustment and natural language reasoning
 6. Validate AI output (allocations must sum to 10000, each between 1000-6000)
 
 ---
@@ -374,7 +374,7 @@ The complete cycle runs every 5 minutes (configurable via `AGENT_INTERVAL_MS`):
 3. Yield Optimization Agent analyzes yields
 4. Risk Management Agent evaluates risk
 5. Portfolio Manager Agent computes allocation
-6. Gemini AI enhances reasoning and may adjust allocations
+6. AI (Llama 3.3 70B via Groq) enhances reasoning and may adjust allocations
 7. Start consensus round on AgentConsensus contract
 8. Each sub-agent submits vote with confidence score
 9. Resolve consensus round (weighted average)
@@ -441,7 +441,7 @@ The Next.js dashboard provides real-time visibility into the agent's operations.
    ```env
    PRIVATE_KEY=your_private_key_here
    MANTLE_MAINNET_RPC=https://rpc.mantle.xyz
-   OPENAI_API_KEY=your_gemini_api_key  # for AI reasoning
+   OPENAI_API_KEY=your_groq_api_key  # for AI reasoning (Llama 3.3 70B via Groq)
    ```
 
 3. **Compile contracts:**
@@ -458,7 +458,7 @@ The Next.js dashboard provides real-time visibility into the agent's operations.
    ```bash
    npm run deploy
    ```
-   This deploys: SentinelVault, DecisionLogger, AgentIdentity, AgentConsensus, MerchantMoeAdapter. Copy the output addresses into your `.env`.
+   This deploys: SentinelVault, DecisionLogger, AgentIdentity, AgentConsensus. Then run `npx hardhat run scripts/deploy-agni-adapter.ts --network mantle` to deploy the AgniAdapter. Copy all output addresses into your `.env`.
 
 6. **Start the agent:**
    ```bash

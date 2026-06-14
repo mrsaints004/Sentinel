@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSignedFetch, walletFetch } from "@/lib/signMessage";
 
 interface PendingTrade {
   action: string;
@@ -12,15 +13,22 @@ interface PendingTrade {
   expectedYieldChange: number;
 }
 
-export default function PendingApproval() {
+interface Props {
+  walletAddress?: string;
+}
+
+export default function PendingApproval({ walletAddress }: Props) {
   const [trade, setTrade] = useState<PendingTrade | null>(null);
   const [status, setStatus] = useState<"pending" | "approved" | "rejected">("pending");
+  const signedFetch = useSignedFetch();
 
   // Poll for pending approvals from the agent
   useEffect(() => {
+    if (!walletAddress) return;
+
     async function checkPending() {
       try {
-        const res = await fetch("/api/autonomous");
+        const res = await walletFetch("/api/autonomous", walletAddress!);
         const data = await res.json();
         if (data.pendingApproval) {
           setTrade({
@@ -33,15 +41,29 @@ export default function PendingApproval() {
             expectedYieldChange: data.pendingApproval.expectedYieldChange || 0,
           });
           setStatus("pending");
+        } else {
+          setTrade(null);
         }
       } catch {
         // No pending trade available
       }
     }
     checkPending();
-    const interval = setInterval(checkPending, 30000);
+    const interval = setInterval(checkPending, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [walletAddress]);
+
+  async function handleAction(action: "approve" | "reject") {
+    setStatus(action === "approve" ? "approved" : "rejected");
+    try {
+      await signedFetch("/api/autonomous", {
+        method: "POST",
+        body: JSON.stringify({ action }),
+      });
+    } catch {
+      // Approval/rejection request failed
+    }
+  }
 
   if (status === "approved") {
     return (
@@ -62,7 +84,6 @@ export default function PendingApproval() {
   }
 
   if (!trade || status !== "pending") {
-    // No pending trade — show nothing
     return null;
   }
 
@@ -91,7 +112,7 @@ export default function PendingApproval() {
                 </div>
                 {delta !== 0 && (
                   <div className={`text-xs font-medium ${delta > 0 ? "text-s-green" : "text-s-red"}`}>
-                    {delta > 0 ? "+" : ""}{delta}%
+                    {delta > 0 ? "+" : ""}{delta.toFixed(1)}%
                   </div>
                 )}
               </div>
@@ -109,19 +130,13 @@ export default function PendingApproval() {
 
       <div className="flex gap-2">
         <button
-          onClick={() => {
-            setStatus("rejected");
-            fetch("/api/autonomous", { method: "POST", body: JSON.stringify({ action: "reject" }) }).catch(() => {});
-          }}
+          onClick={() => handleAction("reject")}
           className="btn-secondary flex-1"
         >
           Reject
         </button>
         <button
-          onClick={() => {
-            setStatus("approved");
-            fetch("/api/autonomous", { method: "POST", body: JSON.stringify({ action: "approve" }) }).catch(() => {});
-          }}
+          onClick={() => handleAction("approve")}
           className="btn-primary flex-1"
         >
           Approve Trade

@@ -84,7 +84,7 @@ async function getPortfolio() {
   const rebalanceCount = await vault.rebalanceCount();
 
   const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=mantle-staked-ether,ondo-us-dollar-yield,usd-coin&vs_currencies=usd");
-  const priceData = await priceRes.json();
+  const priceData: any = await priceRes.json();
   const prices: Record<string, number> = {
     USDY: priceData["ondo-us-dollar-yield"]?.usd ?? 1.05,
     mETH: priceData["mantle-staked-ether"]?.usd ?? 2500,
@@ -118,7 +118,7 @@ async function getPortfolio() {
 
 async function getYields() {
   const res = await fetch("https://yields.llama.fi/pools");
-  const data = await res.json();
+  const data: any = await res.json();
   const pools = (data.data || []).filter((p: any) => p.chain === "Mantle");
 
   const usdy = pools.find((p: any) => p.symbol?.toUpperCase().includes("USDY"));
@@ -157,7 +157,7 @@ async function triggerRebalance() {
   const dashboardUrl = process.env.DASHBOARD_URL || "http://localhost:3000";
   try {
     const res = await fetch(`${dashboardUrl}/api/agent-cycle`, { method: "POST" });
-    const data = await res.json();
+    const data: any = await res.json();
     return {
       status: "cycle_complete",
       steps: data.steps?.map((s: any) => `[${s.type.toUpperCase()}] ${s.message}`) || [],
@@ -178,7 +178,6 @@ async function getAgentStatus() {
     name: meta.agentName,
     strategy: meta.strategyType,
     totalDecisions: Number(meta.totalDecisions),
-    roiPercent: (Number(meta.cumulativeROIBps) / 100).toFixed(2) + "%",
     createdAt: new Date(Number(meta.createdAt) * 1000).toISOString(),
     lastActive: new Date(Number(meta.lastActiveAt) * 1000).toISOString(),
     wallet: AGENT_ADDRESS,

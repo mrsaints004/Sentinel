@@ -1,16 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { ethers } from "ethers";
 
-const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "";
+const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "";
+const FALLBACK_VAULT = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "";
 
 const TOKENS = [
+  { symbol: "USDC", name: "USD Coin", address: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9", decimals: 6 },
   { symbol: "USDY", name: "Ondo USDY", address: process.env.NEXT_PUBLIC_USDY_ADDRESS || "0x5bE26527e817998A7206475496fDE1E68957c5A6", decimals: 18 },
   { symbol: "mETH", name: "Mantle Staked ETH", address: process.env.NEXT_PUBLIC_METH_ADDRESS || "0xcDA86A272531e8640cD7F1a92c01839911B90bb0", decimals: 18 },
-  { symbol: "USDC", name: "USD Coin", address: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9", decimals: 6 },
 ];
 
-// Minimal ABIs for deposit flow
 const ERC20_ABI = [
   "function approve(address spender, uint256 amount) returns (bool)",
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -19,52 +20,127 @@ const ERC20_ABI = [
 
 const VAULT_ABI = [
   "function deposit(address token, uint256 amount) external",
+  "function withdraw(address token, uint256 amount) external",
+  "function userDeposits(address user, address token) view returns (uint256)",
+];
+
+const FACTORY_ABI = [
+  "function getVault(address owner) external view returns (address vault, address logger, uint256 createdAt)",
 ];
 
 interface Props {
   isConnected: boolean;
   onConnect: () => void;
+  walletAddress?: string;
 }
 
-export default function DepositForm({ isConnected, onConnect }: Props) {
+async function resolveVault(provider: ethers.BrowserProvider, signerAddress: string): Promise<string | null> {
+  if (FACTORY_ADDRESS) {
+    try {
+      const factory = new ethers.Contract(FACTORY_ADDRESS, FACTORY_ABI, provider);
+      const [vault, , createdAt] = await factory.getVault(signerAddress);
+      if (vault !== ethers.ZeroAddress && Number(createdAt) > 0) {
+        return vault;
+      }
+    } catch { /* Factory contract call failed — fall back to FALLBACK_VAULT */ }
+  }
+  return FALLBACK_VAULT || null;
+}
+
+export default function DepositForm({ isConnected, onConnect, walletAddress }: Props) {
+  const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [selectedToken, setSelectedToken] = useState(0);
   const [amount, setAmount] = useState("");
-  const [status, setStatus] = useState<"idle" | "approving" | "depositing" | "success" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "resolving" | "approving" | "depositing" | "withdrawing" | "success" | "error">("idle");
   const [txHash, setTxHash] = useState("");
   const [error, setError] = useState("");
+  const [successAction, setSuccessAction] = useState<"deposit" | "withdraw">("deposit");
 
   const deposit = async () => {
     if (!amount || parseFloat(amount) <= 0) return;
-
     const eth = (window as any).ethereum;
     if (!eth) return;
 
-    setStatus("approving");
+    setStatus("resolving");
     setError("");
 
     try {
-      const { ethers } = await import("ethers");
       const provider = new ethers.BrowserProvider(eth);
       const signer = await provider.getSigner();
+      const signerAddress = await signer.getAddress();
       const token = TOKENS[selectedToken];
 
+      const vaultAddress = await resolveVault(provider, signerAddress);
+      if (!vaultAddress) {
+        setError("No vault found. Create a treasury first.");
+        setStatus("error");
+        return;
+      }
+
+      setStatus("approving");
       const tokenContract = new ethers.Contract(token.address, ERC20_ABI, signer);
       const amountWei = ethers.parseUnits(amount, token.decimals);
 
-      // Check allowance
-      const currentAllowance = await tokenContract.allowance(await signer.getAddress(), VAULT_ADDRESS);
+      const currentAllowance = await tokenContract.allowance(signerAddress, vaultAddress);
       if (currentAllowance < amountWei) {
-        const approveTx = await tokenContract.approve(VAULT_ADDRESS, ethers.MaxUint256);
+        const approveTx = await tokenContract.approve(vaultAddress, ethers.MaxUint256);
         await approveTx.wait();
       }
 
-      // Deposit
       setStatus("depositing");
-      const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, signer);
+      const vault = new ethers.Contract(vaultAddress, VAULT_ABI, signer);
       const depositTx = await vault.deposit(token.address, amountWei);
       const receipt = await depositTx.wait();
 
       setTxHash(receipt.hash);
+      setSuccessAction("deposit");
+      setStatus("success");
+      setAmount("");
+    } catch (e: any) {
+      setError(e.message?.slice(0, 100) || "Transaction failed");
+      setStatus("error");
+    }
+  };
+
+  const withdraw = async () => {
+    if (!amount || parseFloat(amount) <= 0) return;
+    const eth = (window as any).ethereum;
+    if (!eth) return;
+
+    setStatus("resolving");
+    setError("");
+
+    try {
+      const provider = new ethers.BrowserProvider(eth);
+      const signer = await provider.getSigner();
+      const signerAddress = await signer.getAddress();
+      const token = TOKENS[selectedToken];
+
+      const vaultAddress = await resolveVault(provider, signerAddress);
+      if (!vaultAddress) {
+        setError("No vault found.");
+        setStatus("error");
+        return;
+      }
+
+      const vault = new ethers.Contract(vaultAddress, VAULT_ABI, signer);
+      const amountWei = ethers.parseUnits(amount, token.decimals);
+
+      // Check user's deposited balance
+      const deposited = await vault.userDeposits(signerAddress, token.address);
+      if (deposited < amountWei) {
+        const depositedFloat = parseFloat(ethers.formatUnits(deposited, token.decimals));
+        setError(`Insufficient vault balance. You have ${depositedFloat.toFixed(token.decimals === 6 ? 2 : 6)} ${token.symbol} deposited.`);
+        setStatus("error");
+        return;
+      }
+
+      setStatus("withdrawing");
+      const withdrawTx = await vault.withdraw(token.address, amountWei);
+      const receipt = await withdrawTx.wait();
+
+      setTxHash(receipt.hash);
+      setSuccessAction("withdraw");
       setStatus("success");
       setAmount("");
     } catch (e: any) {
@@ -76,9 +152,9 @@ export default function DepositForm({ isConnected, onConnect }: Props) {
   if (!isConnected) {
     return (
       <div className="card">
-        <h2 className="text-sm font-semibold text-s-text mb-4">Deposit to Vault</h2>
+        <h2 className="text-sm font-semibold text-s-text mb-4">Deposit & Withdraw</h2>
         <div className="text-center py-6">
-          <p className="text-sm text-s-text-muted mb-3">Connect wallet to deposit</p>
+          <p className="text-sm text-s-text-muted mb-3">Connect wallet to manage funds</p>
           <button onClick={onConnect} className="btn-primary">Connect Wallet</button>
         </div>
       </div>
@@ -87,7 +163,25 @@ export default function DepositForm({ isConnected, onConnect }: Props) {
 
   return (
     <div className="card">
-      <h2 className="text-sm font-semibold text-s-text mb-4">Deposit to Vault</h2>
+      {/* Tab Switcher */}
+      <div className="flex items-center gap-1 mb-4 p-1 rounded-lg bg-gray-100">
+        <button
+          onClick={() => { setTab("deposit"); setStatus("idle"); setError(""); }}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            tab === "deposit" ? "bg-white text-s-text shadow-sm" : "text-s-text-muted hover:text-s-text"
+          }`}
+        >
+          Deposit
+        </button>
+        <button
+          onClick={() => { setTab("withdraw"); setStatus("idle"); setError(""); }}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            tab === "withdraw" ? "bg-white text-s-text shadow-sm" : "text-s-text-muted hover:text-s-text"
+          }`}
+        >
+          Withdraw
+        </button>
+      </div>
 
       {status === "success" ? (
         <div className="text-center py-4">
@@ -96,7 +190,9 @@ export default function DepositForm({ isConnected, onConnect }: Props) {
               <path d="M5 13l4 4L19 7"/>
             </svg>
           </div>
-          <p className="text-sm font-medium text-s-green mb-1">Deposit Successful</p>
+          <p className="text-sm font-medium text-s-green mb-1">
+            {successAction === "deposit" ? "Deposit" : "Withdrawal"} Successful
+          </p>
           {txHash && (
             <a
               href={`https://mantlescan.xyz/tx/${txHash}`}
@@ -108,7 +204,7 @@ export default function DepositForm({ isConnected, onConnect }: Props) {
             </a>
           )}
           <button onClick={() => setStatus("idle")} className="btn-secondary mt-3 text-xs">
-            Deposit More
+            Done
           </button>
         </div>
       ) : (
@@ -141,14 +237,26 @@ export default function DepositForm({ isConnected, onConnect }: Props) {
           )}
 
           <button
-            onClick={deposit}
-            disabled={status === "approving" || status === "depositing" || !amount}
-            className="btn-primary w-full disabled:opacity-50"
+            onClick={tab === "deposit" ? deposit : withdraw}
+            disabled={(status !== "idle" && status !== "error") || !amount}
+            className={`w-full py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 ${
+              tab === "withdraw"
+                ? "bg-red-500 hover:bg-red-600 text-white"
+                : "btn-primary"
+            }`}
           >
-            {status === "approving" ? "Approving..." :
+            {status === "resolving" ? "Finding vault..." :
+             status === "approving" ? "Approving..." :
              status === "depositing" ? "Depositing..." :
-             "Deposit"}
+             status === "withdrawing" ? "Withdrawing..." :
+             tab === "deposit" ? "Deposit" : "Withdraw"}
           </button>
+
+          {tab === "withdraw" && (
+            <p className="text-[10px] text-s-text-muted text-center">
+              Withdraws tokens from your vault back to your wallet.
+            </p>
+          )}
         </div>
       )}
     </div>

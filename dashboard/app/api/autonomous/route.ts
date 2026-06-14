@@ -17,13 +17,13 @@ interface AutonomousRules {
 }
 
 const DEFAULT_RULES: AutonomousRules = {
-  enabled: false,
-  maxPortfolioChangeBps: 2000,
+  enabled: true,
+  maxPortfolioChangeBps: 1500,
   maxDailyTrades: 3,
   allowedAssets: ["USDY", "mETH", "USDC"],
   riskProfile: "moderate",
-  maxRiskScore: 7,
-  minConfidence: 60,
+  maxRiskScore: 5,
+  minConfidence: 70,
 };
 
 function getUserDataPath(wallet: string, filename: string): string {
@@ -39,7 +39,9 @@ function readRules(wallet: string): AutonomousRules {
       const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
       return { ...DEFAULT_RULES, ...data };
     }
-  } catch {}
+  } catch {
+    // Rules file doesn't exist — use defaults
+  }
   return { ...DEFAULT_RULES };
 }
 
@@ -48,10 +50,41 @@ function writeRules(wallet: string, rules: AutonomousRules): void {
   fs.writeFileSync(filePath, JSON.stringify(rules, null, 2));
 }
 
+function readPendingApproval(wallet: string): Record<string, unknown> | null {
+  try {
+    const filePath = getUserDataPath(wallet, "pending-approval.json");
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      if (data && typeof data === "object" && data.action) return data;
+    }
+  } catch {
+    // No pending approval file
+  }
+  return null;
+}
+
+function clearPendingApproval(wallet: string): void {
+  const filePath = getUserDataPath(wallet, "pending-approval.json");
+  try {
+    fs.writeFileSync(filePath, "null");
+  } catch {
+    // Unable to clear pending approval file
+  }
+}
+
+function writeApprovalResponse(wallet: string, action: "approve" | "reject"): void {
+  const filePath = getUserDataPath(wallet, "approval-response.json");
+  fs.writeFileSync(filePath, JSON.stringify({ action, timestamp: Date.now() }));
+}
+
 export async function GET(request: Request) {
   const wallet = getWalletFromQuery(request);
   if (!wallet) return NextResponse.json(DEFAULT_RULES);
-  return NextResponse.json(readRules(wallet));
+
+  const rules = readRules(wallet);
+  const pendingApproval = readPendingApproval(wallet);
+
+  return NextResponse.json({ ...rules, pendingApproval });
 }
 
 export async function POST(req: Request) {
@@ -67,6 +100,20 @@ export async function POST(req: Request) {
 
   try {
     const update = await req.json();
+
+    // Handle approve/reject actions for pending trades
+    if (update.action === "approve") {
+      writeApprovalResponse(wallet, "approve");
+      clearPendingApproval(wallet);
+      return NextResponse.json({ status: "approved", message: "Trade approved. Agent will execute on next cycle." });
+    }
+    if (update.action === "reject") {
+      writeApprovalResponse(wallet, "reject");
+      clearPendingApproval(wallet);
+      return NextResponse.json({ status: "rejected", message: "Trade rejected." });
+    }
+
+    // Handle rule updates
     const rules = readRules(wallet);
 
     if (typeof update.enabled === "boolean") rules.enabled = update.enabled;
@@ -104,7 +151,8 @@ export async function POST(req: Request) {
 
     writeRules(wallet, rules);
     return NextResponse.json(rules);
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Invalid request body" }, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Invalid request body";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }

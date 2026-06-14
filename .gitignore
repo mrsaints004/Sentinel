@@ -48,3 +48,10 @@ data/
 
 # Hardhat deployment cache
 deployments/
+
+# Vercel
+.vercel/
+
+# User store / runtime state
+.user-store.json
+.link-store.json

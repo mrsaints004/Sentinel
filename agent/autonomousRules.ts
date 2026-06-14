@@ -20,13 +20,13 @@ export interface TradeCheck {
 }
 
 const DEFAULT_RULES: AutonomousRules = {
-  enabled: false,
-  maxPortfolioChangeBps: 2000,    // 20%
+  enabled: true,
+  maxPortfolioChangeBps: 1500,    // 15% max change per asset
   maxDailyTrades: 3,
   allowedAssets: ["USDY", "mETH", "USDC"],
   riskProfile: "moderate",
-  maxRiskScore: 7,
-  minConfidence: 60,
+  maxRiskScore: 5,
+  minConfidence: 70,
 };
 
 // Per-user daily trade counter (in-memory, resets on restart)

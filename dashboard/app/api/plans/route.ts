@@ -29,7 +29,7 @@ function readTasks(wallet: string): ScheduledTask[] {
   try {
     const filePath = getUserDataPath(wallet, "scheduled-tasks.json");
     if (fs.existsSync(filePath)) return JSON.parse(fs.readFileSync(filePath, "utf-8"));
-  } catch {}
+  } catch { /* Tasks file missing or malformed — return empty list */ }
   return [];
 }
 

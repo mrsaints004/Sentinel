@@ -13,6 +13,7 @@ contract VaultFactory is Ownable {
     }
 
     address public platformAgent;
+    address public defaultSwapRouter;
     mapping(address => VaultInfo) public vaults;
     address[] public vaultOwners;
 
@@ -22,6 +23,7 @@ contract VaultFactory is Ownable {
 
     event VaultCreated(address indexed owner, address vault, address logger);
     event DefaultAssetsUpdated(address[] assets, string[] names);
+    event DefaultSwapRouterUpdated(address indexed router);
 
     constructor(address _platformAgent) Ownable(msg.sender) {
         require(_platformAgent != address(0), "VaultFactory: zero agent");
@@ -35,6 +37,11 @@ contract VaultFactory is Ownable {
         emit DefaultAssetsUpdated(assets, names);
     }
 
+    function setDefaultSwapRouter(address _router) external onlyOwner {
+        defaultSwapRouter = _router;
+        emit DefaultSwapRouterUpdated(_router);
+    }
+
     function createVault() external returns (address vault, address logger) {
         require(vaults[msg.sender].vault == address(0), "VaultFactory: vault exists");
 
@@ -46,6 +53,11 @@ contract VaultFactory is Ownable {
         // Add default supported assets to the vault
         for (uint256 i = 0; i < defaultAssets.length; i++) {
             newVault.addSupportedAsset(defaultAssets[i], defaultAssetNames[i]);
+        }
+
+        // Set swap router BEFORE transferring ownership
+        if (defaultSwapRouter != address(0)) {
+            newVault.setSwapRouter(defaultSwapRouter);
         }
 
         // Transfer ownership to the user

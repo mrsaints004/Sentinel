@@ -12,6 +12,8 @@ interface Decision {
   timestamp: number;
   portfolioValueUSD?: number;
   riskLevel?: string;
+  commitHash?: string;
+  verified?: boolean;
 }
 
 interface Activity {
@@ -55,6 +57,25 @@ function ActionBadge({ action }: { action: string }) {
   );
 }
 
+function VerifiedBadge({ verified, hasCommit }: { verified?: boolean; hasCommit: boolean }) {
+  if (!hasCommit) return null;
+  if (verified) {
+    return (
+      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+        Verified
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-600">
+      Unverified
+    </span>
+  );
+}
+
 function SourceBadge({ source }: { source: string }) {
   const styles: Record<string, string> = {
     agent: "bg-indigo-50 text-indigo-600",
@@ -86,7 +107,9 @@ export default function DecisionLog({ decisions }: { decisions: Decision[] }) {
         const res = await fetch("/api/activity");
         const data = await res.json();
         if (Array.isArray(data)) setActivity(data);
-      } catch {}
+      } catch {
+        // Activity API unavailable — skip
+      }
     }
     fetchActivity();
     const interval = setInterval(fetchActivity, 15000);
@@ -117,6 +140,7 @@ export default function DecisionLog({ decisions }: { decisions: Decision[] }) {
               <ActionBadge action={d.action} />
               {d.riskLevel && <RiskBadge level={d.riskLevel} />}
               <SourceBadge source="agent" />
+              <VerifiedBadge verified={d.verified} hasCommit={!!d.commitHash && d.commitHash !== "0x0000000000000000000000000000000000000000000000000000000000000000"} />
               <span className="text-[11px] text-s-text-muted ml-auto">{timeAgo(d.timestamp)}</span>
             </div>
             <p className="text-[13px] text-s-text-secondary leading-relaxed mb-3">

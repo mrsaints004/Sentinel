@@ -23,7 +23,7 @@ export default function AgentLeaderboard() {
         if (data.length > 0) {
           setAgents(data);
         }
-      } catch {}
+      } catch { /* Leaderboard API unavailable — keep existing agents */ }
       setLoading(false);
     }
     fetchLeaderboard();

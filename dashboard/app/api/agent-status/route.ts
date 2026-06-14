@@ -25,7 +25,9 @@ export async function GET(request: Request) {
             maxDrawdownBps: Number(maxDrawdownBps), streakLength: Number(streakLength),
             accuracyScore: Number(accuracyScore), totalGames: Number(totalGames),
           };
-        } catch {}
+        } catch {
+          // Reputation not yet computed — return without it
+        }
 
         return NextResponse.json({
           agentName: metadata.agentName, strategyType: metadata.strategyType,

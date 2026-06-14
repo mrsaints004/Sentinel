@@ -18,7 +18,9 @@ export default function TelegramConnect() {
       const res = await fetch(`/api/telegram-link?wallet=${wallet.address}`);
       const data = await res.json();
       setIsLinked(data.linked);
-    } catch {}
+    } catch {
+      // Link status check failed — assume not linked
+    }
   }, [wallet.address]);
 
   useEffect(() => {
@@ -47,7 +49,9 @@ export default function TelegramConnect() {
         // Open Telegram deep link — bot receives the token via /start payload
         window.open(`https://t.me/${BOT_USERNAME}?start=${data.token}`, "_blank");
       }
-    } catch {}
+    } catch {
+      // Link request failed — user can retry
+    }
     setLoading(false);
   }
 
@@ -60,7 +64,9 @@ export default function TelegramConnect() {
         body: JSON.stringify({ walletAddress: wallet.address }),
       });
       setIsLinked(false);
-    } catch {}
+    } catch {
+      // Unlink failed — user can retry
+    }
   }
 
   return (
@@ -170,22 +176,47 @@ export default function TelegramConnect() {
 
         {showMCP && (
           <div className="rounded-xl bg-gray-900 p-3 text-xs font-mono text-gray-300 overflow-x-auto">
-            <div className="text-gray-500 mb-2">// Add to Claude Desktop &rarr; Settings &rarr; MCP Servers</div>
-            <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">{`{
-  "mcpServers": {
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-500">Claude Desktop &rarr; Settings &rarr; MCP</span>
+              <button
+                onClick={() => {
+                  const config = JSON.stringify({
+                    mcpServers: {
+                      "sentinel-treasury": {
+                        command: "npx",
+                        args: ["ts-node", "mcp-server/index.ts"],
+                        cwd: process.env.NEXT_PUBLIC_PROJECT_DIR || "./",
+                        env: {
+                          VAULT_ADDRESS: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "",
+                          LOGGER_ADDRESS: process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "",
+                          IDENTITY_ADDRESS: process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "",
+                          AGENT_WALLET_ADDRESS: process.env.NEXT_PUBLIC_AGENT_ADDRESS || "",
+                        },
+                      },
+                    },
+                  }, null, 2);
+                  navigator.clipboard.writeText(config);
+                }}
+                className="text-[10px] px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+            <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">{JSON.stringify({
+  mcpServers: {
     "sentinel-treasury": {
-      "command": "npx",
-      "args": ["ts-node", "mcp-server/index.ts"],
-      "cwd": "/path/to/mantle",
-      "env": {
-        "VAULT_ADDRESS": "your-vault",
-        "LOGGER_ADDRESS": "your-logger",
-        "IDENTITY_ADDRESS": "your-identity",
-        "AGENT_WALLET_ADDRESS": "your-agent"
-      }
-    }
-  }
-}`}</pre>
+      command: "npx",
+      args: ["ts-node", "mcp-server/index.ts"],
+      cwd: process.env.NEXT_PUBLIC_PROJECT_DIR || "./",
+      env: {
+        VAULT_ADDRESS: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "",
+        LOGGER_ADDRESS: process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "",
+        IDENTITY_ADDRESS: process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "",
+        AGENT_WALLET_ADDRESS: process.env.NEXT_PUBLIC_AGENT_ADDRESS || "",
+      },
+    },
+  },
+}, null, 2)}</pre>
             <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500">
               Tools: <span className="text-violet-400">get_portfolio</span>, <span className="text-violet-400">get_yields</span>, <span className="text-violet-400">get_decisions</span>, <span className="text-violet-400">trigger_rebalance</span>, <span className="text-violet-400">get_agent_status</span>
             </div>
