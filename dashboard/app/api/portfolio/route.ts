@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { getWalletFromQuery } from "../../../lib/auth";
-import { getVaultContract, getProvider, fetchPricesUSD, formatTokenBalance, fetchYieldsFromDeFiLlama } from "../../../lib/provider";
+import { getVaultContract, getUserVaultAddress, getProvider, fetchPricesUSD, formatTokenBalance, fetchYieldsFromDeFiLlama } from "../../../lib/provider";
 
 const VAULT_ABI = [
   "function getPortfolio() external view returns (address[], string[], uint256[], uint256[])",
@@ -10,19 +10,30 @@ const VAULT_ABI = [
 ];
 
 // Cache to avoid rate limiting on free RPC
-let cachedResponse: { data: unknown; timestamp: number } | null = null;
+let cachedResponse: { data: unknown; wallet: string | null; timestamp: number } | null = null;
 const CACHE_TTL_MS = 30_000; // 30 seconds
 
 export async function GET(request: Request) {
   const wallet = getWalletFromQuery(request);
 
-  // Return cached data if fresh
-  if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+  // Return cached data if fresh and same wallet
+  if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS && cachedResponse.wallet === wallet) {
     return NextResponse.json(cachedResponse.data);
   }
 
-  // Always use the main vault — factory vaults are user-specific and often empty
-  const vault = getVaultContract();
+  // Try user's factory vault first, fall back to main vault
+  let vault: ethers.Contract | null = null;
+  if (wallet) {
+    try {
+      const info = await getUserVaultAddress(wallet);
+      if (info) {
+        vault = new ethers.Contract(info.vault, VAULT_ABI, getProvider());
+      }
+    } catch {
+      // Factory lookup failed — fall back to main vault
+    }
+  }
+  if (!vault) vault = getVaultContract();
 
   if (!vault) {
     return NextResponse.json({
@@ -67,7 +78,7 @@ export async function GET(request: Request) {
       lastRebalance: lastRebalanceTs > BigInt(0) ? new Date(Number(lastRebalanceTs) * 1000).toISOString() : new Date().toISOString(),
       source: "on-chain-mainnet",
     };
-    cachedResponse = { data: result, timestamp: Date.now() };
+    cachedResponse = { data: result, wallet, timestamp: Date.now() };
     return NextResponse.json(result);
   } catch (error) {
     console.error("[API/portfolio] On-chain fetch failed:", error);

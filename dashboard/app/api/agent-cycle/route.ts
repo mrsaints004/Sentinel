@@ -221,7 +221,17 @@ Allocations must sum to 10000. No allocation above 6000 (60% cap). Be specific a
       return sum + y.apy * weights[i];
     }, 0);
     steps.push({ type: "success", message: `Blended portfolio yield: ${blended.toFixed(2)}% APY` });
-    steps.push({ type: "system", message: `Analysis complete. Use Telegram /runnow to execute on-chain.` });
+    // Trigger real agent execution via file-based signal
+    const fs = await import("fs");
+    const path = await import("path");
+    try {
+      const triggerPath = path.join(process.cwd(), "..", "run-now-trigger.json");
+      fs.writeFileSync(triggerPath, JSON.stringify({ requestedAt: Date.now(), action: aiAction }));
+      steps.push({ type: "system", message: "Triggering on-chain execution..." });
+      steps.push({ type: "success", message: "Agent cycle triggered. Transactions will appear in the decision log shortly." });
+    } catch {
+      steps.push({ type: "system", message: "Analysis complete. On-chain execution scheduled for next agent cycle." });
+    }
 
   } catch (error: any) {
     steps.push({ type: "warning", message: `Error: ${error.message}` });

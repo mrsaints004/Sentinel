@@ -2,10 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5";
-const LOGGER_ADDRESS = process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "0x962A00d762692F8692B90914577d5191e79a514b";
-const IDENTITY_ADDRESS = process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "0x7292c3Bef25159Fb4119A8CF48AAa027596C7fFD";
-const CONSENSUS_ADDRESS = process.env.NEXT_PUBLIC_CONSENSUS_ADDRESS || "0x9F881e3A5F4Fc1621D3CC2fDc187E8302dc50A96";
+const AGENT_ADDRESS = process.env.NEXT_PUBLIC_AGENT_ADDRESS || "0x76f61EA62C5A8F0b38D820F66DAF546f7Fa6015c";
 
 function ExternalLinkIcon() {
   return (
@@ -181,55 +178,37 @@ export default function DecisionLog({ decisions }: { decisions: Decision[] }) {
                 })}
               </div>
             )}
-            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-gray-100">
-              <a
-                href={`https://mantlescan.xyz/address/${LOGGER_ADDRESS}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-s-accent hover:underline"
-              >
-                Decision Log
-                <ExternalLinkIcon />
-              </a>
-              <a
-                href={`https://mantlescan.xyz/address/${VAULT_ADDRESS}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-s-accent hover:underline"
-              >
-                Vault
-                <ExternalLinkIcon />
-              </a>
-              {d.commitHash && d.commitHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
-                <a
-                  href={`https://mantlescan.xyz/address/${LOGGER_ADDRESS}#readContract`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] text-violet-500 hover:underline"
-                >
-                  Verify Commit
-                  <ExternalLinkIcon />
-                </a>
-              )}
-              <a
-                href={`https://mantlescan.xyz/address/${CONSENSUS_ADDRESS}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-teal-500 hover:underline"
-              >
-                Consensus
-                <ExternalLinkIcon />
-              </a>
-              <a
-                href={`https://mantlescan.xyz/address/${IDENTITY_ADDRESS}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-amber-500 hover:underline"
-              >
-                Agent Identity
-                <ExternalLinkIcon />
-              </a>
-            </div>
+            {(() => {
+              // Try to find matching activity entry with txHash (match by closest timestamp)
+              const matchedActivity = activity.find(
+                (a) => a.txHash && Math.abs(a.timestamp - d.timestamp) < 120000
+              );
+              return (
+                <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-gray-100">
+                  {matchedActivity?.txHash ? (
+                    <a
+                      href={`https://mantlescan.xyz/tx/${matchedActivity.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-s-accent hover:underline"
+                    >
+                      View Transaction
+                      <ExternalLinkIcon />
+                    </a>
+                  ) : (
+                    <a
+                      href={`https://mantlescan.xyz/address/${AGENT_ADDRESS}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-s-accent hover:underline"
+                    >
+                      View Agent Transactions
+                      <ExternalLinkIcon />
+                    </a>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
 

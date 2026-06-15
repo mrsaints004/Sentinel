@@ -100,6 +100,9 @@ export class AgentManager {
         console.error("[AgentManager] Cycle error:", error);
       }
     }, config.intervalMs);
+
+    // Poll for dashboard-triggered runs (file-based signal)
+    this.startTriggerWatcher();
   }
 
   stop(): void {
@@ -108,6 +111,29 @@ export class AgentManager {
       clearInterval(this.intervalHandle);
       this.intervalHandle = null;
     }
+  }
+
+  private startTriggerWatcher(): void {
+    const fs = require("fs");
+    const path = require("path");
+    const triggerPath = path.join(__dirname, "..", "run-now-trigger.json");
+
+    setInterval(async () => {
+      try {
+        if (!fs.existsSync(triggerPath)) return;
+        const data = JSON.parse(fs.readFileSync(triggerPath, "utf-8"));
+        // Only act on triggers less than 30 seconds old
+        if (Date.now() - data.requestedAt > 30000) {
+          fs.unlinkSync(triggerPath);
+          return;
+        }
+        fs.unlinkSync(triggerPath);
+        console.log("[AgentManager] Dashboard triggered run-now. Executing cycle...");
+        await this.runAllCycles();
+      } catch {
+        // Trigger check failed — ignore
+      }
+    }, 5000); // Check every 5 seconds
   }
 
   private async loadFromFactory(): Promise<void> {
