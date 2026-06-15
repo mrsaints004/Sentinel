@@ -7,7 +7,6 @@
     "test": "hardhat test",
     "deploy": "hardhat run scripts/deploy-mainnet.ts --network mantle",
     "deploy:mainnet": "hardhat run scripts/deploy-mainnet.ts --network mantle",
-    "demo": "hardhat run scripts/demo.ts --network mantle",
     "seed": "hardhat run scripts/seed.ts --network mantle",
     "agent": "ts-node agent/index.ts",
     "telegram": "ts-node agent/telegram.ts",

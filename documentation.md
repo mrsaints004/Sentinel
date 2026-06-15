@@ -424,7 +424,7 @@ The Next.js dashboard provides real-time visibility into the agent's operations.
 
 - Node.js 18+
 - A wallet with MNT on Mantle Mainnet (at least 0.5 MNT for gas)
-- Small amounts of USDY, mETH, and USDC on Mantle for demo deposits
+- Small amounts of USDY, mETH, and USDC on Mantle for initial deposits
 
 ### Steps
 
@@ -473,14 +473,14 @@ The Next.js dashboard provides real-time visibility into the agent's operations.
 8. **Deposit tokens:**
    Use the dashboard or interact directly with the vault contract to deposit small amounts of USDY, mETH, and USDC.
 
-### Getting Tokens for Demo
+### Getting Tokens
 
 - **MNT**: Buy on any exchange that supports Mantle, send to your deployer wallet
 - **USDY**: Bridge from Ethereum or buy on Mantle DEXs
 - **mETH**: Stake ETH on Mantle or buy on DEXs
 - **USDC**: Bridge from Ethereum via https://bridge.mantle.xyz
 
-For a demo video, 0.1 of each token is enough - the contracts work at any amount.
+0.1 of each token is sufficient — the contracts work at any amount.
 
 ---
 

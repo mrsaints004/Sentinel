@@ -23,7 +23,7 @@ const mantle = defineChain({
 // RainbowKit config
 const config = getDefaultConfig({
   appName: "Sentinel AI Treasury",
-  projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID || "sentinel-ai-treasury-demo",
+  projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID || "sentinel-ai-treasury",
   chains: [mantle],
   ssr: true,
 });
