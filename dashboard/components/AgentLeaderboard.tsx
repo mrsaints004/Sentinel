@@ -92,7 +92,7 @@ export default function AgentLeaderboard() {
 
       <p className="text-[11px] text-s-text-muted mt-4 pt-3 border-t border-gray-100">
         All agents verified on-chain via Agent Identity NFTs on Mantle.
-        <a href={`https://mantlescan.xyz/address/${process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || ""}`} target="_blank" rel="noopener" className="ml-1 text-indigo-500 hover:underline">View contract</a>
+        <a href={`https://mantlescan.xyz/address/${process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "0x7292c3Bef25159Fb4119A8CF48AAa027596C7fFD"}`} target="_blank" rel="noopener" className="ml-1 text-indigo-500 hover:underline">View contract</a>
       </p>
     </div>
   );

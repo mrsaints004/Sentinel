@@ -11,9 +11,9 @@ export const MANTLE = {
 };
 
 export const CONTRACT_ADDRESSES = {
-  vault: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "",
-  logger: process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "",
-  identity: process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "",
+  vault: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5",
+  logger: process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "0x962A00d762692F8692B90914577d5191e79a514b",
+  identity: process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "0x7292c3Bef25159Fb4119A8CF48AAa027596C7fFD",
 };
 
 export const TOKEN_ADDRESSES = {

@@ -1,9 +1,9 @@
 import { ethers } from "ethers";
 
 const RPC_URL = process.env.MANTLE_RPC || "https://rpc.mantle.xyz";
-const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || process.env.VAULT_ADDRESS || "";
-const LOGGER_ADDRESS = process.env.NEXT_PUBLIC_LOGGER_ADDRESS || process.env.LOGGER_ADDRESS || "";
-const IDENTITY_ADDRESS = process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || process.env.IDENTITY_ADDRESS || "";
+const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || process.env.VAULT_ADDRESS || "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5";
+const LOGGER_ADDRESS = process.env.NEXT_PUBLIC_LOGGER_ADDRESS || process.env.LOGGER_ADDRESS || "0x962A00d762692F8692B90914577d5191e79a514b";
+const IDENTITY_ADDRESS = process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || process.env.IDENTITY_ADDRESS || "0x7292c3Bef25159Fb4119A8CF48AAa027596C7fFD";
 
 // Real token decimals on Mantle Mainnet
 export const TOKEN_DECIMALS: Record<string, number> = {
@@ -108,7 +108,7 @@ export async function fetchYieldsFromDeFiLlama(): Promise<Record<string, number>
 
 // --- Multi-user support ---
 
-const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || process.env.FACTORY_ADDRESS || "";
+const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || process.env.FACTORY_ADDRESS || "0x4F64da35DA275fC052a01a78603500e592059Cb9";
 
 const FACTORY_ABI = [
   "function getVault(address owner) external view returns (address vault, address logger, uint256 createdAt)",

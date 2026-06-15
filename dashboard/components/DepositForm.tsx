@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { ethers } from "ethers";
 
-const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "";
-const FALLBACK_VAULT = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "";
+const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "0x4F64da35DA275fC052a01a78603500e592059Cb9";
+const FALLBACK_VAULT = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5";
 
 const TOKENS = [
   { symbol: "USDC", name: "USD Coin", address: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9", decimals: 6 },

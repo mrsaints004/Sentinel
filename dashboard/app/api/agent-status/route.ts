@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 export async function GET(request: Request) {
   const wallet = getWalletFromQuery(request);
   const identity = getIdentityContract();
-  const agentAddress = process.env.AGENT_WALLET_ADDRESS || process.env.NEXT_PUBLIC_AGENT_ADDRESS || "";
+  const agentAddress = process.env.AGENT_WALLET_ADDRESS || process.env.NEXT_PUBLIC_AGENT_ADDRESS || "0x76f61EA62C5A8F0b38D820F66DAF546f7Fa6015c";
 
   if (identity && agentAddress) {
     try {
