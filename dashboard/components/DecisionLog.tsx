@@ -2,6 +2,19 @@
 
 import { useEffect, useState } from "react";
 
+const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5";
+const LOGGER_ADDRESS = process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "0x962A00d762692F8692B90914577d5191e79a514b";
+const IDENTITY_ADDRESS = process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "0x7292c3Bef25159Fb4119A8CF48AAa027596C7fFD";
+const CONSENSUS_ADDRESS = process.env.NEXT_PUBLIC_CONSENSUS_ADDRESS || "0x9F881e3A5F4Fc1621D3CC2fDc187E8302dc50A96";
+
+function ExternalLinkIcon() {
+  return (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+    </svg>
+  );
+}
+
 interface Decision {
   id: number;
   action: string;
@@ -168,6 +181,55 @@ export default function DecisionLog({ decisions }: { decisions: Decision[] }) {
                 })}
               </div>
             )}
+            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-gray-100">
+              <a
+                href={`https://mantlescan.xyz/address/${LOGGER_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-s-accent hover:underline"
+              >
+                Decision Log
+                <ExternalLinkIcon />
+              </a>
+              <a
+                href={`https://mantlescan.xyz/address/${VAULT_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-s-accent hover:underline"
+              >
+                Vault
+                <ExternalLinkIcon />
+              </a>
+              {d.commitHash && d.commitHash !== "0x0000000000000000000000000000000000000000000000000000000000000000" && (
+                <a
+                  href={`https://mantlescan.xyz/address/${LOGGER_ADDRESS}#readContract`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] text-violet-500 hover:underline"
+                >
+                  Verify Commit
+                  <ExternalLinkIcon />
+                </a>
+              )}
+              <a
+                href={`https://mantlescan.xyz/address/${CONSENSUS_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-teal-500 hover:underline"
+              >
+                Consensus
+                <ExternalLinkIcon />
+              </a>
+              <a
+                href={`https://mantlescan.xyz/address/${IDENTITY_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-amber-500 hover:underline"
+              >
+                Agent Identity
+                <ExternalLinkIcon />
+              </a>
+            </div>
           </div>
         ))}
 

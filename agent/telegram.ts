@@ -817,8 +817,6 @@ export function notifyUserByWallet(wallet: string, decision: {
   newAllocations: { symbol: string; allocationBps: number }[];
 }, txHash: string | null) {
   if (!botInstance) return;
-  const chatId = getLinkedChat(wallet);
-  if (!chatId) return;
 
   const allocText = decision.newAllocations
     .map((a) => `${a.symbol}: ${(a.allocationBps / 100).toFixed(1)}%`)
@@ -831,7 +829,14 @@ export function notifyUserByWallet(wallet: string, decision: {
     text += `\n\n_On-chain execution pending or failed — no tx hash returned_`;
   }
 
-  botInstance.sendMessage(chatId, text, { parse_mode: "Markdown" }).catch(() => {});
+  // Try direct wallet lookup first, then broadcast to all linked users
+  const chatId = getLinkedChat(wallet);
+  if (chatId) {
+    botInstance.sendMessage(chatId, text, { parse_mode: "Markdown" }).catch(() => {});
+  } else {
+    // Agent wallet may differ from user wallet — broadcast to all linked users
+    notifyAllLinkedUsers(text);
+  }
 }
 
 export function notifyDecision(decision: {
