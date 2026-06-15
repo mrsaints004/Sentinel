@@ -677,15 +677,44 @@ export function startTelegramBot(token: string) {
     });
   }
 
-  function sendLastDecision(b: TelegramBot, chatId: number, wallet: string) {
+  async function sendLastDecision(b: TelegramBot, chatId: number, wallet: string) {
+    // Try in-memory history first
     const history = getDecisionHistory(wallet);
-    if (history.length === 0) { b.sendMessage(chatId, "No decisions yet."); return; }
-    const last = history[history.length - 1];
-    const d = last.decision;
-    const ago = Math.floor((Date.now() - last.timestamp) / 60000);
-    let text = `\u{1F916} *Last Decision* (${ago}m ago)\n\n*${d.action.toUpperCase()}* | ${d.riskLevel} risk | ${d.confidence}% confidence\n\n${d.reasoning}\n\n_Market: ${d.agentContributions.market}_\n_Yield: ${d.agentContributions.yield}_\n_Risk: ${d.agentContributions.risk}_`;
-    if (last.txHash) text += `\n\n[View on Explorer](https://mantlescan.xyz/tx/${last.txHash})`;
-    b.sendMessage(chatId, text, { parse_mode: "Markdown" });
+    if (history.length > 0) {
+      const last = history[history.length - 1];
+      const d = last.decision;
+      const ago = Math.floor((Date.now() - last.timestamp) / 60000);
+      let text = `\u{1F916} *Last Decision* (${ago}m ago)\n\n*${d.action.toUpperCase()}* | ${d.riskLevel} risk | ${d.confidence}% confidence\n\n${d.reasoning}\n\n_Market: ${d.agentContributions.market}_\n_Yield: ${d.agentContributions.yield}_\n_Risk: ${d.agentContributions.risk}_`;
+      if (last.txHash) text += `\n\n[View on Explorer](https://mantlescan.xyz/tx/${last.txHash})`;
+      b.sendMessage(chatId, text, { parse_mode: "Markdown" });
+      return;
+    }
+
+    // Fall back to persisted activity log
+    try {
+      const { getRecentActivity } = await import("./activityLog");
+      const activities = await getRecentActivity(wallet, 5);
+      // Also check agent wallet's activity
+      const agentWallet = config.agentWalletAddress || "";
+      const agentActivities = agentWallet ? await getRecentActivity(agentWallet, 5) : [];
+      const all = [...activities, ...agentActivities].sort((a, b) => b.timestamp - a.timestamp);
+      const lastDecision = all.find((a) => a.type === "decision" || a.type === "approval");
+
+      if (lastDecision) {
+        const ago = Math.floor((Date.now() - lastDecision.timestamp) / 60000);
+        let text = `\u{1F916} *Last Decision* (${ago}m ago)\n\n*${lastDecision.action.toUpperCase()}* | ${lastDecision.riskLevel || "medium"} risk | ${lastDecision.confidence || 0}% confidence\n\n${lastDecision.reasoning}`;
+        if (lastDecision.allocations && lastDecision.allocations.length > 0) {
+          text += `\n\n*Allocation:* ${lastDecision.allocations.map((a) => `${a.symbol}: ${(a.allocationBps / 100).toFixed(1)}%`).join(" | ")}`;
+        }
+        if (lastDecision.txHash) text += `\n\n[View on Explorer](https://mantlescan.xyz/tx/${lastDecision.txHash})`;
+        b.sendMessage(chatId, text, { parse_mode: "Markdown" });
+        return;
+      }
+    } catch {
+      // Activity log read failed
+    }
+
+    b.sendMessage(chatId, "No decisions yet. Run /runnow to trigger a cycle.");
   }
 
   function sendAgents(b: TelegramBot, chatId: number, wallet: string) {
