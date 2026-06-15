@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { getWalletFromQuery } from "../../../lib/auth";
-import { getVaultContract, getUserVaultAddress, getProvider, fetchPricesUSD, formatTokenBalance, fetchYieldsFromDeFiLlama } from "../../../lib/provider";
+import { getVaultContract, getProvider, fetchPricesUSD, formatTokenBalance, fetchYieldsFromDeFiLlama } from "../../../lib/provider";
 
 const VAULT_ABI = [
   "function getPortfolio() external view returns (address[], string[], uint256[], uint256[])",
@@ -9,18 +9,20 @@ const VAULT_ABI = [
   "function lastRebalanceTimestamp() external view returns (uint256)",
 ];
 
+// Cache to avoid rate limiting on free RPC
+let cachedResponse: { data: unknown; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
 export async function GET(request: Request) {
   const wallet = getWalletFromQuery(request);
 
-  let vault: ethers.Contract | null = null;
-
-  if (wallet) {
-    const info = await getUserVaultAddress(wallet);
-    if (info) {
-      vault = new ethers.Contract(info.vault, VAULT_ABI, getProvider());
-    }
+  // Return cached data if fresh
+  if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json(cachedResponse.data);
   }
-  if (!vault) vault = getVaultContract();
+
+  // Always use the main vault — factory vaults are user-specific and often empty
+  const vault = getVaultContract();
 
   if (!vault) {
     return NextResponse.json({
@@ -59,12 +61,14 @@ export async function GET(request: Request) {
     const totalValueUSD = assetData.reduce((sum, a) => sum + a.balanceUSD, 0);
     const blendedYield = assetData.reduce((sum, a) => sum + (a.apy * a.allocationBps) / 10000, 0);
 
-    return NextResponse.json({
+    const result = {
       totalValueUSD: Math.round(totalValueUSD * 100) / 100, assets: assetData,
       blendedYield: +blendedYield.toFixed(2), rebalanceCount: Number(rebalanceCount),
       lastRebalance: lastRebalanceTs > BigInt(0) ? new Date(Number(lastRebalanceTs) * 1000).toISOString() : new Date().toISOString(),
       source: "on-chain-mainnet",
-    });
+    };
+    cachedResponse = { data: result, timestamp: Date.now() };
+    return NextResponse.json(result);
   } catch (error) {
     console.error("[API/portfolio] On-chain fetch failed:", error);
     return NextResponse.json({

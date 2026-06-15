@@ -267,6 +267,9 @@ export class AgentManager {
     if (tradeCheck.allowed) {
       if (decision.action !== "hold") {
         txHash = await ctx.executor.executeRebalance(decision);
+        if (!txHash) {
+          console.warn(`[Agent] Rebalance returned no txHash — on-chain execution may have failed`);
+        }
         const oldAlloc = ctx.currentAllocations.map((a) => a.allocationBps);
         await ctx.executor.logDecisionOnChain(decision, oldAlloc, portfolioValueUSD, commitData);
         ctx.totalDecisions++;

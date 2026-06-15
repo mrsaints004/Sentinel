@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
 import { getWalletFromQuery } from "../../../lib/auth";
-import { getIdentityContract, getUserVaultAddress } from "../../../lib/provider";
+import { getIdentityContract } from "../../../lib/provider";
 import { ethers } from "ethers";
+
+// Cache to avoid rate limiting on free RPC
+let cachedResponse: { data: unknown; timestamp: number } | null = null;
+const CACHE_TTL_MS = 60_000; // 60 seconds
 
 export async function GET(request: Request) {
   const wallet = getWalletFromQuery(request);
+
+  if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json(cachedResponse.data);
+  }
+
   const identity = getIdentityContract();
   const agentAddress = process.env.AGENT_WALLET_ADDRESS || process.env.NEXT_PUBLIC_AGENT_ADDRESS || "0x76f61EA62C5A8F0b38D820F66DAF546f7Fa6015c";
 
@@ -29,7 +38,7 @@ export async function GET(request: Request) {
           // Reputation not yet computed — return without it
         }
 
-        return NextResponse.json({
+        const result = {
           agentName: metadata.agentName, strategyType: metadata.strategyType,
           totalDecisions: Number(metadata.totalDecisions),
           cumulativeROIBps: Number(metadata.cumulativeROIBps),
@@ -37,7 +46,9 @@ export async function GET(request: Request) {
           walletAddress: agentAddress,
           lastActive: new Date(Number(metadata.lastActiveAt) * 1000).toISOString(),
           reputation, source: "on-chain-mainnet",
-        });
+        };
+        cachedResponse = { data: result, timestamp: Date.now() };
+        return NextResponse.json(result);
       }
     } catch (error) {
       console.error("[API/agent-status] On-chain fetch failed:", error);

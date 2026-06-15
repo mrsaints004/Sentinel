@@ -825,7 +825,11 @@ export function notifyUserByWallet(wallet: string, decision: {
     .join(" | ");
 
   let text = `*Portfolio updated* \u{1F4E2}\n\n${decision.reasoning}\n\n*Allocation:* ${allocText}\n${decision.confidence}% confidence | ${decision.riskLevel} risk`;
-  if (txHash) text += `\n\n[View on Explorer](https://mantlescan.xyz/tx/${txHash})`;
+  if (txHash) {
+    text += `\n\n[View on Explorer](https://mantlescan.xyz/tx/${txHash})`;
+  } else if (decision.action !== "hold") {
+    text += `\n\n_On-chain execution pending or failed — no tx hash returned_`;
+  }
 
   botInstance.sendMessage(chatId, text, { parse_mode: "Markdown" }).catch(() => {});
 }

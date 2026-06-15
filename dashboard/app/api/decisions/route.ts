@@ -1,24 +1,26 @@
 import { NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { getWalletFromQuery } from "../../../lib/auth";
-import { getLoggerContract, getUserVaultAddress, getProvider } from "../../../lib/provider";
+import { getLoggerContract } from "../../../lib/provider";
 
 const LOGGER_ABI = [
   "function getRecentDecisions(uint256 count) external view returns (tuple(uint256 id, address agent, string reasoning, string action, uint256[] oldAllocations, uint256[] newAllocations, string[] assetNames, uint256 timestamp, uint256 portfolioValueUSD, string riskLevel, bytes32 commitHash, bool verified)[])",
 ];
 
+// Cache to avoid rate limiting on free RPC
+let cachedResponse: { data: unknown; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30_000; // 30 seconds
+
 export async function GET(request: Request) {
   const wallet = getWalletFromQuery(request);
 
-  let logger: ethers.Contract | null = null;
-
-  if (wallet) {
-    const info = await getUserVaultAddress(wallet);
-    if (info) {
-      logger = new ethers.Contract(info.logger, LOGGER_ABI, getProvider());
-    }
+  // Return cached data if fresh
+  if (cachedResponse && Date.now() - cachedResponse.timestamp < CACHE_TTL_MS) {
+    return NextResponse.json(cachedResponse.data);
   }
-  if (!logger) logger = getLoggerContract();
+
+  // Always use the main logger contract
+  const logger = getLoggerContract();
   if (!logger) return NextResponse.json([]);
 
   try {
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
       verified: d.verified,
     }));
     formatted.sort((a: { id: number }, b: { id: number }) => b.id - a.id);
+    cachedResponse = { data: formatted, timestamp: Date.now() };
     return NextResponse.json(formatted);
   } catch (error) {
     console.error("[API/decisions] On-chain fetch failed:", error);

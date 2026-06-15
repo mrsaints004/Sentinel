@@ -366,7 +366,7 @@ A judge or user can:
 
 ## Agent Decision Cycle
 
-The complete cycle runs every 5 minutes (configurable via `AGENT_INTERVAL_MS`):
+The complete cycle runs every 6 hours (configurable via `AGENT_INTERVAL_MS`):
 
 ```
 1. Fetch market data (CoinGecko prices, protocol yields)
