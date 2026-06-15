@@ -9,6 +9,7 @@ interface TreasuryConfig {
 }
 
 const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || "";
+const VAULT_ADDRESS_FALLBACK = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5";
 const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x09Bc4E0D864854c6aFB6eB9A9cdF58aC190D0dF9";
 const USDC_DECIMALS = 6;
 
@@ -159,19 +160,23 @@ export default function CreateTreasury({
         setTxHash(receipt.hash);
       } else {
         // Direct deposit to global vault (single-user mode)
-        const VAULT_ADDRESS = process.env.NEXT_PUBLIC_VAULT_ADDRESS || "";
+        if (!config.depositAmount || Number(config.depositAmount) <= 0) {
+          setError("Enter a deposit amount to continue.");
+          setIsCreating(false);
+          return;
+        }
         const amountWei = ethers.parseUnits(config.depositAmount, USDC_DECIMALS);
 
         setStatusMsg("Approving USDC...");
         const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
-        const currentAllowance = await usdc.allowance(await signer.getAddress(), VAULT_ADDRESS);
+        const currentAllowance = await usdc.allowance(await signer.getAddress(), VAULT_ADDRESS_FALLBACK);
         if (currentAllowance < amountWei) {
-          const approveTx = await usdc.approve(VAULT_ADDRESS, ethers.MaxUint256);
+          const approveTx = await usdc.approve(VAULT_ADDRESS_FALLBACK, ethers.MaxUint256);
           await approveTx.wait();
         }
 
         setStatusMsg("Depositing into vault...");
-        const vault = new ethers.Contract(VAULT_ADDRESS, VAULT_ABI, signer);
+        const vault = new ethers.Contract(VAULT_ADDRESS_FALLBACK, VAULT_ABI, signer);
         const depositTx = await vault.deposit(USDC_ADDRESS, amountWei);
         const receipt = await depositTx.wait();
         setTxHash(receipt.hash);

@@ -5,6 +5,22 @@ import { useWallet } from "./WalletProvider";
 
 const BOT_USERNAME = "SentinelAl_bot";
 
+const mcpConfig = {
+  mcpServers: {
+    "sentinel-treasury": {
+      command: "npx",
+      args: ["ts-node", "mcp-server/index.ts"],
+      cwd: "/path/to/sentinel",
+      env: {
+        VAULT_ADDRESS: "0xFc4EDCF2CA8068b2A750Ad4507297aba0807CdC5",
+        LOGGER_ADDRESS: "0x962A00d762692F8692B90914577d5191e79a514b",
+        IDENTITY_ADDRESS: "0x7292c3Bef25159Fb4119A8CF48AAa027596C7fFD",
+        AGENT_WALLET_ADDRESS: "0x76f61EA62C5A8F0b38D820F66DAF546f7Fa6015c",
+      },
+    },
+  },
+};
+
 export default function TelegramConnect() {
   const wallet = useWallet();
   const [isLinked, setIsLinked] = useState(false);
@@ -183,21 +199,7 @@ export default function TelegramConnect() {
               <span className="text-gray-500">Claude Desktop &rarr; Settings &rarr; MCP</span>
               <button
                 onClick={() => {
-                  const config = JSON.stringify({
-                    mcpServers: {
-                      "sentinel-treasury": {
-                        command: "npx",
-                        args: ["ts-node", "mcp-server/index.ts"],
-                        cwd: process.env.NEXT_PUBLIC_PROJECT_DIR || "./",
-                        env: {
-                          VAULT_ADDRESS: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "",
-                          LOGGER_ADDRESS: process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "",
-                          IDENTITY_ADDRESS: process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "",
-                          AGENT_WALLET_ADDRESS: process.env.NEXT_PUBLIC_AGENT_ADDRESS || "",
-                        },
-                      },
-                    },
-                  }, null, 2);
+                  const config = JSON.stringify(mcpConfig, null, 2);
                   navigator.clipboard.writeText(config);
                 }}
                 className="text-[10px] px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition-colors"
@@ -205,21 +207,7 @@ export default function TelegramConnect() {
                 Copy
               </button>
             </div>
-            <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">{JSON.stringify({
-  mcpServers: {
-    "sentinel-treasury": {
-      command: "npx",
-      args: ["ts-node", "mcp-server/index.ts"],
-      cwd: process.env.NEXT_PUBLIC_PROJECT_DIR || "./",
-      env: {
-        VAULT_ADDRESS: process.env.NEXT_PUBLIC_VAULT_ADDRESS || "",
-        LOGGER_ADDRESS: process.env.NEXT_PUBLIC_LOGGER_ADDRESS || "",
-        IDENTITY_ADDRESS: process.env.NEXT_PUBLIC_IDENTITY_ADDRESS || "",
-        AGENT_WALLET_ADDRESS: process.env.NEXT_PUBLIC_AGENT_ADDRESS || "",
-      },
-    },
-  },
-}, null, 2)}</pre>
+            <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">{JSON.stringify(mcpConfig, null, 2)}</pre>
             <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500">
               Tools: <span className="text-violet-400">get_portfolio</span>, <span className="text-violet-400">get_yields</span>, <span className="text-violet-400">get_decisions</span>, <span className="text-violet-400">trigger_rebalance</span>, <span className="text-violet-400">get_agent_status</span>
             </div>

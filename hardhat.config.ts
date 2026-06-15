@@ -37,6 +37,22 @@ const config: HardhatUserConfig = {
       url: "http://127.0.0.1:8545",
     },
   },
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY || "",
+    customChains: [
+      {
+        network: "mantle",
+        chainId: 5000,
+        urls: {
+          apiURL: "https://api.mantlescan.xyz/api/v2",
+          browserURL: "https://mantlescan.xyz",
+        },
+      },
+    ],
+  },
+  sourcify: {
+    enabled: false,
+  },
   paths: {
     sources: "./contracts",
     tests: "./test",
