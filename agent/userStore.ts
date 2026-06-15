@@ -2,7 +2,9 @@ import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
 
-const DATA_ROOT = path.join(__dirname, "..", "data");
+// Use Railway persistent volume if available, fall back to project root
+const PERSIST_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, "..");
+const DATA_ROOT = path.join(PERSIST_DIR, "data");
 
 /**
  * Per-user file-based persistence.

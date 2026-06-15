@@ -175,6 +175,24 @@ export function startTelegramBot(token: string) {
 
   console.log("[Telegram] Bot started. Waiting for messages...");
 
+  // Register command menu so users see available commands when typing /
+  bot.setMyCommands([
+    { command: "portfolio", description: "View asset allocations and balances" },
+    { command: "yields", description: "Current APY for each asset" },
+    { command: "risk", description: "Risk score and exposure analysis" },
+    { command: "lastdecision", description: "Last AI decision with reasoning" },
+    { command: "agents", description: "Status of all 4 sub-agents" },
+    { command: "setrisk", description: "Change risk profile" },
+    { command: "autonomous", description: "View/toggle autonomous mode" },
+    { command: "approve", description: "Approve a pending trade" },
+    { command: "reject", description: "Reject a pending trade" },
+    { command: "dca", description: "Manage DCA plans" },
+    { command: "plans", description: "View scheduled tasks" },
+    { command: "vault", description: "Vault info and address" },
+    { command: "runnow", description: "Trigger an agent cycle now" },
+    { command: "help", description: "Show all commands" },
+  ]).catch(() => { /* Command registration failed — non-critical */ });
+
   // --- /start (with optional deep link token) ---
   bot.onText(/\/start\s*(.*)/, (msg, match) => {
     const chatId = msg.chat.id;

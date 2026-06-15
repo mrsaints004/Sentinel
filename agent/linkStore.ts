@@ -2,7 +2,9 @@ import * as fs from "fs";
 import * as path from "path";
 import { logActivity } from "./activityLog";
 
-const STORE_PATH = path.join(__dirname, "..", ".telegram-links.json");
+// Use /data for Railway persistent volume, fall back to project root
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || path.join(__dirname, "..");
+const STORE_PATH = path.join(DATA_DIR, ".telegram-links.json");
 
 interface LinkStore {
   // token -> { walletAddress, createdAt }
